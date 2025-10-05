@@ -67,7 +67,8 @@ const MatchBuilder = () => {
           character: char.name || (characters.find(c => c.id === char.id)?.name || ""),
           costume: char.costume ? (costumes.find(c => c.id === char.costume)?.name || char.costume) : "",
           capsules: (char.capsules || []).filter(Boolean).map(cid => capsules.find(c => c.id === cid)?.name || cid),
-          ai: char.ai ? (aiItems.find(ai => ai.id === char.ai)?.name || char.ai) : ""
+          ai: char.ai ? (aiItems.find(ai => ai.id === char.ai)?.name || char.ai) : "",
+          sparking: char.sparking ? (sparkingMusic.find(s => s.id === char.sparking)?.name || char.sparking) : ""
         }))
       };
       const yamlStr = yaml.dump(teamYaml, { noRefs: true, lineWidth: 120 });
@@ -83,7 +84,7 @@ const MatchBuilder = () => {
   const importSingleTeam = async (event, matchId, teamName) => {
     // Clear the target team first so previous selections are removed — use 5 empty slots
     const emptySlots = () => Array.from({ length: 5 }, () => ({ name: "", id: "", capsules: Array(7).fill(""), costume: "", ai: "" }));
-    setMatches(prev => prev.map(m => m.id === matchId ? { ...m, [teamName]: emptySlots() } : m));
+      setMatches(prev => prev.map(m => m.id === matchId ? { ...m, [teamName]: emptySlots().map(slot => ({ ...slot, sparking: "" })) } : m));
     const files = event.target.files;
     if (!files || files.length === 0) return;
     for (let file of files) {
@@ -106,7 +107,8 @@ const MatchBuilder = () => {
               }
               return "";
             }),
-            ai: m.ai ? findAiIdFromValue(m.ai, aiItems) : ""
+            ai: m.ai ? findAiIdFromValue(m.ai, aiItems) : "",
+            sparking: m.sparking ? (sparkingMusic.find(s => (s.name || "").trim().toLowerCase() === (m.sparking || "").toString().trim().toLowerCase())?.id || "") : ""
           };
         });
 
@@ -115,6 +117,37 @@ const MatchBuilder = () => {
             ? { ...m, [teamName]: newTeam }
             : m
         ));
+        // Safety-net: normalize fields (name, costume, ai, sparking) after import
+        setMatches((prev) => prev.map((m) => {
+          if (m.id !== matchId) return m;
+          const normalizeTeam = (team) => team.map((ch) => {
+            const out = { ...ch };
+            // populate name if missing
+            if ((!out.name || out.name.trim() === '') && out.id) {
+              out.name = (characters.find(c => c.id === out.id)?.name) || out.name || '';
+            }
+            // costume: try to resolve by id or name
+            if (out.costume) {
+              if (!costumes.find(cs => cs.id === out.costume)) {
+                const cs = costumes.find(cs => (cs.name || '').trim().toLowerCase() === (out.costume || '').toString().trim().toLowerCase());
+                out.costume = cs ? cs.id : out.costume;
+              }
+            }
+            // ai: attempt to resolve name->id
+            if (out.ai && aiItems && aiItems.length > 0) {
+              out.ai = findAiIdFromValue(out.ai, aiItems) || out.ai;
+            }
+            // sparking: resolve if provided as name
+            if (out.sparking) {
+              if (!sparkingMusic.find(s => s.id === out.sparking)) {
+                const sp = sparkingMusic.find(s => (s.name || '').trim().toLowerCase() === (out.sparking || '').toString().trim().toLowerCase());
+                out.sparking = sp ? sp.id : out.sparking;
+              }
+            }
+            return out;
+          });
+          return { ...m, [teamName]: normalizeTeam(newTeam) };
+        }));
         setSuccess(`Imported ${teamName} for match ${matchId}`);
         setError("");
         try { event.target.value = null; } catch (e) {}
@@ -139,7 +172,8 @@ const MatchBuilder = () => {
         character: char.name || (characters.find(c => c.id === char.id)?.name || ""),
         costume: char.costume ? (costumes.find(c => c.id === char.costume)?.name || char.costume) : "",
         capsules: (char.capsules || []).filter(Boolean).map(cid => capsules.find(c => c.id === cid)?.name || cid),
-        ai: char.ai ? (aiItems.find(ai => ai.id === char.ai)?.name || char.ai) : ""
+          ai: char.ai ? (aiItems.find(ai => ai.id === char.ai)?.name || char.ai) : "",
+          sparking: char.sparking ? (sparkingMusic.find(s => s.id === char.sparking)?.name || char.sparking) : ""
       })),
       team2: (match.team2 || []).map((char) => ({
         character: char.name || (characters.find(c => c.id === char.id)?.name || ""),
@@ -150,7 +184,8 @@ const MatchBuilder = () => {
           const cost = cap ? Number(cap.cost || cap.Cost || 0) : 0;
           return `${name}${cost ? ` (${cost})` : ''}`;
         }),
-        ai: char.ai ? (aiItems.find(ai => ai.id === char.ai)?.name || char.ai) : ""
+          ai: char.ai ? (aiItems.find(ai => ai.id === char.ai)?.name || char.ai) : "",
+          sparking: char.sparking ? (sparkingMusic.find(s => s.id === char.sparking)?.name || char.sparking) : ""
       }))
     };
     const yamlStr = yaml.dump(matchYaml, { noRefs: true, lineWidth: 120 });
@@ -162,7 +197,7 @@ const MatchBuilder = () => {
   // Helper to import a single match
   const importSingleMatch = async (event, matchId) => {
     // Clear both teams for this match before importing (5 empty slots each)
-    const emptySlots = () => Array.from({ length: 5 }, () => ({ name: "", id: "", capsules: Array(7).fill(""), costume: "", ai: "" }));
+  const emptySlots = () => Array.from({ length: 5 }, () => ({ name: "", id: "", capsules: Array(7).fill(""), costume: "", ai: "", sparking: "" }));
     setMatches(prev => prev.map(m => m.id === matchId ? { ...m, team1: emptySlots(), team2: emptySlots() } : m));
     const files = event.target.files;
     if (!files || files.length === 0) return;
@@ -187,7 +222,8 @@ const MatchBuilder = () => {
               }
               return "";
             }),
-            ai: char.ai ? findAiIdFromValue(char.ai, aiItems) : ""
+            ai: char.ai ? findAiIdFromValue(char.ai, aiItems) : "",
+            sparking: char.sparking ? (sparkingMusic.find(s => (s.name || "").trim().toLowerCase() === (char.sparking || "").toString().trim().toLowerCase())?.id || "") : ""
           };
         });
         const team2 = (matchYaml.team2 || []).map((char) => {
@@ -205,7 +241,8 @@ const MatchBuilder = () => {
               }
               return "";
             }),
-            ai: char.ai ? findAiIdFromValue(char.ai, aiItems) : ""
+            ai: char.ai ? findAiIdFromValue(char.ai, aiItems) : "",
+            sparking: char.sparking ? (sparkingMusic.find(s => (s.name || "").trim().toLowerCase() === (char.sparking || "").toString().trim().toLowerCase())?.id || "") : ""
           };
         });
         setMatches((prev) => prev.map((m) =>
@@ -213,6 +250,33 @@ const MatchBuilder = () => {
             ? { ...m, team1, team2 }
             : m
         ));
+        // Safety-net: normalize all teams for this match (resolve names and ids)
+        setMatches((prev) => prev.map((m) => {
+          if (m.id !== matchId) return m;
+          const resolve = (team) => team.map((ch) => {
+            const out = { ...ch };
+            if ((!out.name || out.name.trim() === '') && out.id) {
+              out.name = (characters.find(c => c.id === out.id)?.name) || out.name || '';
+            }
+            if (out.costume) {
+              if (!costumes.find(cs => cs.id === out.costume)) {
+                const cs = costumes.find(cs => (cs.name || '').trim().toLowerCase() === (out.costume || '').toString().trim().toLowerCase());
+                out.costume = cs ? cs.id : out.costume;
+              }
+            }
+            if (out.ai && aiItems && aiItems.length > 0) {
+              out.ai = findAiIdFromValue(out.ai, aiItems) || out.ai;
+            }
+            if (out.sparking) {
+              if (!sparkingMusic.find(s => s.id === out.sparking)) {
+                const sp = sparkingMusic.find(s => (s.name || '').trim().toLowerCase() === (out.sparking || '').toString().trim().toLowerCase());
+                out.sparking = sp ? sp.id : out.sparking;
+              }
+            }
+            return out;
+          });
+          return { ...m, team1: resolve(team1), team2: resolve(team2) };
+        }));
         setSuccess(`Imported match details for match ${matchId}`);
         setError("");
         try { event.target.value = null; } catch (e) {}
@@ -228,11 +292,21 @@ const MatchBuilder = () => {
   const [characters, setCharacters] = useState([]);
   const [capsules, setCapsules] = useState([]);
   const [costumes, setCostumes] = useState([]);
+  const [sparkingMusic, setSparkingMusic] = useState([]);
   const [aiItems, setAiItems] = useState([]);
   const [matches, setMatches] = useState([]);
   const [rulesets, setRulesets] = useState(null);
   const [activeRulesetKey, setActiveRulesetKey] = useState(null);
   const [collapsedMatches, setCollapsedMatches] = useState({});
+  const [showImportModal, setShowImportModal] = useState(false);
+  const [importMatchFile, setImportMatchFile] = useState(null);
+  const [importItemFile, setImportItemFile] = useState(null);
+  const [importMatchName, setImportMatchName] = useState(null);
+  const [importItemName, setImportItemName] = useState(null);
+  const [importMatchSummary, setImportMatchSummary] = useState("");
+  const [importItemSummary, setImportItemSummary] = useState("");
+  const [importMatchValid, setImportMatchValid] = useState(false);
+  const [importItemValid, setImportItemValid] = useState(false);
   const [matchCounter, setMatchCounter] = useState(1);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -287,11 +361,61 @@ const MatchBuilder = () => {
   const matchFileRef = useRef(null);
   const itemFileRef = useRef(null);
   const importJsonRef = useRef(null);
+  const modalRef = useRef(null);
+  const importButtonRef = useRef(null);
 
   useEffect(() => {
     loadCSVFiles();
     loadRulesets();
   }, []);
+
+  // Focus trap and keyboard handling for the import modal
+  useEffect(() => {
+    if (!showImportModal) {
+      // restore focus to import button if available
+      try { importButtonRef.current && importButtonRef.current.focus(); } catch(e){}
+      return;
+    }
+
+    // when modal opens, focus the modal container
+    try { if (modalRef.current) modalRef.current.focus(); } catch(e){}
+
+    const onKeyDown = (e) => {
+      if (!showImportModal) return;
+      if (e.key === 'Escape') {
+        setShowImportModal(false);
+        e.preventDefault();
+        return;
+      }
+      if (e.key !== 'Tab') return;
+      // focus trap: keep focus within modalRef
+      const root = modalRef.current;
+      if (!root) return;
+      const focusable = root.querySelectorAll('a[href], button, textarea, input, select, [tabindex]:not([tabindex="-1"])');
+      const focusableEls = Array.prototype.filter.call(focusable, (el) => !el.hasAttribute('disabled') && el.getAttribute('tabindex') !== '-1');
+      if (focusableEls.length === 0) {
+        e.preventDefault();
+        return;
+      }
+      const first = focusableEls[0];
+      const last = focusableEls[focusableEls.length - 1];
+      const active = document.activeElement;
+      if (e.shiftKey) {
+        if (active === first || root === active) {
+          last.focus();
+          e.preventDefault();
+        }
+      } else {
+        if (active === last) {
+          first.focus();
+          e.preventDefault();
+        }
+      }
+    };
+
+    document.addEventListener('keydown', onKeyDown);
+    return () => document.removeEventListener('keydown', onKeyDown);
+  }, [showImportModal]);
 
   // Fallback ruleset used when capsule-rules.yaml cannot be loaded or parsed.
   // This represents the "no rules" behavior the site had before rulesets existed.
@@ -416,6 +540,7 @@ const MatchBuilder = () => {
       const caps = [];
       const costs = [];
       const ai = [];
+      const sparking = [];
       // helper to split CSV line respecting quoted fields with commas
       const splitLine = (line) => {
         const res = [];
@@ -470,11 +595,15 @@ const MatchBuilder = () => {
           if (item.type === "Capsule") caps.push(item);
           else if (item.type === "Costume") costs.push(item);
           else if (item.type === "AI") ai.push(item);
+          else if ((item.type || '').toString().trim() === 'Sparking BGM') {
+            sparking.push(item);
+          }
         }
       }
       setCapsules(caps);
       setCostumes(costs);
       setAiItems(ai);
+      setSparkingMusic(sparking);
     } catch (err) {
       console.error("Failed to load capsules:", err);
     }
@@ -616,6 +745,7 @@ const MatchBuilder = () => {
         id: slotObj?.id || "",
         costume: slotObj?.costume || "",
         ai: slotObj?.ai || "",
+        sparking: slotObj?.sparking || "",
         capsules: Array.isArray(slotObj?.capsules)
           ? slotObj.capsules.map((c) => (c || ""))
           : Array(7).fill("")
@@ -632,7 +762,7 @@ const MatchBuilder = () => {
 
       // If the team array is shorter than the target index, extend with empty slots
       while (index >= team.length) {
-        team.push({ name: "", id: "", capsules: Array(7).fill(""), costume: "", ai: "" });
+        team.push({ name: "", id: "", capsules: Array(7).fill(""), costume: "", ai: "", sparking: "" });
       }
       // Debug: log previous and new slot for visibility when importing
       // replaceCharacter performed (debug logs removed)
@@ -746,6 +876,7 @@ const MatchBuilder = () => {
           ...char.capsules.filter((c) => c).map((c) => ({ key: c }))
         );
         if (char.ai) allItems.push({ key: char.ai });
+        if (char.sparking) allItems.push({ key: char.sparking });
 
         if (allItems.length === 0) allItems.push({ key: "None" });
 
@@ -773,49 +904,63 @@ const MatchBuilder = () => {
   };
 
   const handleImportMatches = async (event) => {
-    // Clear all existing matches first
-    setMatches([]);
-    const files = event.target.files;
-    if (!files || files.length === 0) return;
-    let matchSetup = null;
-    let itemSetup = null;
+    // New flow: use import modal upload areas instead (backwards-compatible)
+    // If user supplied files via the old single input, attempt to detect which is which
+    const files = Array.from(event.target?.files || []);
+    let matchJson = importMatchFile;
+    let itemJson = importItemFile;
     for (let file of files) {
-      const text = await file.text();
       try {
-        const json = JSON.parse(text);
+        const txt = await file.text();
+        const json = JSON.parse(txt);
         if (json.matchCount) {
-          // Heuristic: if customize keys exist, it's itemSetup
           const isItemSetup = Object.values(json.matchCount)[0]?.customize !== undefined;
-          if (isItemSetup) itemSetup = json;
-          else matchSetup = json;
+          if (isItemSetup) itemJson = json;
+          else matchJson = json;
         }
-      } catch (e) {
-        setError("Invalid JSON file: " + file.name);
-        return;
+      } catch (err) {
+        // ignore invalid files here; user will be notified if both aren't provided
       }
     }
-    if (!matchSetup || !itemSetup) {
-      setError("Both MatchSetup.json and ItemSetup.json are required.");
+    if (!matchJson || !itemJson) {
+      setError("Please provide both MatchSetup and ItemSetup JSON (use the Import Matches dialog).");
       return;
     }
+    try {
+      importFromJsonObjects(matchJson, itemJson);
+      setSuccess("Imported matches from JSON files.");
+      setError("");
+      setImportMatchFile(null);
+      setImportItemFile(null);
+      setShowImportModal(false);
+    } catch (err) {
+      console.error('import error', err);
+      setError('Failed to import JSON files');
+    }
+  };
+
+  // Central importer that operates on parsed JSON objects (matchSetup, itemSetup)
+  const importFromJsonObjects = (matchSetup, itemSetup) => {
     // Parse matches
     const newMatches = Object.entries(matchSetup.matchCount).map(([key, matchData], idx) => {
       const team1 = matchData.targetTeaming.com1.teamMembers
         .map((m) => ({
           id: m.key !== "None" ? m.key : "",
-          name: "",
+          name: m.key !== "None" ? (characters.find(c => c.id === m.key)?.name || "") : "",
           capsules: Array(7).fill(""),
           costume: "",
           ai: "",
+          sparking: "",
         }))
         .filter((char) => char.id !== "");
       const team2 = matchData.targetTeaming.com2.teamMembers
         .map((m) => ({
           id: m.key !== "None" ? m.key : "",
-          name: "",
+          name: m.key !== "None" ? (characters.find(c => c.id === m.key)?.name || "") : "",
           capsules: Array(7).fill(""),
           costume: "",
           ai: "",
+          sparking: "",
         }))
         .filter((char) => char.id !== "");
       return {
@@ -836,29 +981,71 @@ const MatchBuilder = () => {
         for (let team of [newMatches[idx].team1, newMatches[idx].team2]) {
           const char = team.find((c) => c.id === charId);
           if (char) {
-            // Fill items
+            // Fill items (capsules, costume, ai, sparking)
             const settings = charData.targetSettings[2].equipItems.concat(charData.targetSettings[3].equipItems);
             let capsules = [];
             let costume = "";
             let ai = "";
+            let sparking = "";
             settings.forEach((item) => {
               if (!item.key || item.key === "None") return;
               if (item.key.startsWith("00_1_")) costume = item.key;
               else if (item.key.startsWith("00_7_")) ai = item.key;
+              else if (item.key.startsWith("00_6_")) sparking = item.key;
               else capsules.push(item.key);
             });
             char.capsules = [...capsules, ...Array(7 - capsules.length).fill("")].slice(0, 7);
             char.costume = costume;
             char.ai = ai;
+            char.sparking = sparking;
           }
         }
       });
     });
-    setMatches(newMatches);
-    setSuccess("Imported matches from JSON files.");
-    setError("");
-    // reset the input so the same files can be uploaded again without refresh
-    try { event.target.value = null; } catch (e) { /* ignore */ }
+    // Safety-net normalize names and ids
+    const normalized = newMatches.map((m) => ({
+      ...m,
+      team1: m.team1.map((ch) => normalizeImportedChar(ch)),
+      team2: m.team2.map((ch) => normalizeImportedChar(ch)),
+    }));
+    setMatches(normalized);
+  };
+
+  // Simple validators that return { valid: boolean, summary: string }
+  const validateMatchSetup = (obj) => {
+    if (!obj || typeof obj !== 'object' || !obj.matchCount) return { valid: false, summary: 'Missing matchCount' };
+    const count = Object.keys(obj.matchCount || {}).length;
+    return { valid: true, summary: `Match Count: ${count}` };
+  };
+
+  const validateItemSetup = (obj) => {
+    if (!obj || typeof obj !== 'object' || !obj.matchCount) return { valid: false, summary: 'Missing matchCount' };
+    // Use top-level matchCount length as the canonical match count for ItemSetup
+    const count = Object.keys(obj.matchCount || {}).length;
+    return { valid: true, summary: `Match Count: ${count}` };
+  };
+
+  const normalizeImportedChar = (out) => {
+    const res = { ...out };
+    if ((!res.name || res.name.trim() === '') && res.id) {
+      res.name = (characters.find(c => c.id === res.id)?.name) || res.name || '';
+    }
+    if (res.costume) {
+      if (!costumes.find(cs => cs.id === res.costume)) {
+        const cs = costumes.find(cs => (cs.name || '').trim().toLowerCase() === (res.costume || '').toString().trim().toLowerCase());
+        res.costume = cs ? cs.id : res.costume;
+      }
+    }
+    if (res.ai && aiItems && aiItems.length > 0) {
+      res.ai = findAiIdFromValue(res.ai, aiItems) || res.ai;
+    }
+    if (res.sparking) {
+      if (!sparkingMusic.find(s => s.id === res.sparking)) {
+        const sp = sparkingMusic.find(s => (s.name || '').trim().toLowerCase() === (res.sparking || '').toString().trim().toLowerCase());
+        res.sparking = sp ? sp.id : res.sparking;
+      }
+    }
+    return res;
   };
 
   if (loading) {
@@ -927,18 +1114,144 @@ const MatchBuilder = () => {
               <span className="hidden sm:inline">CLEAR ALL</span>
             </span>
           </button>
-          <label className="bg-gradient-to-r from-blue-600 to-blue-700 text-white px-6 py-3 rounded-xl font-bold text-sm shadow-lg hover:shadow-xl transform hover:scale-105 transition-all border border-blue-500 cursor-pointer flex items-center">
+          <button
+            ref={importButtonRef}
+            onClick={() => setShowImportModal(true)}
+            className="bg-gradient-to-r from-blue-600 to-blue-700 text-white px-6 py-3 rounded-xl font-bold text-sm shadow-lg hover:shadow-xl transform hover:scale-105 transition-all border border-blue-500 flex items-center"
+          >
             <Upload className="mr-2" size={18} />
             <span className="hidden sm:inline">IMPORT MATCHES</span>
-            <input
-              type="file"
-              accept="application/json"
-              multiple
-              style={{ display: "none" }}
-              onChange={handleImportMatches}
-            />
-          </label>
+          </button>
         </div>
+        {showImportModal && createPortal(
+          <div className="fixed inset-0 z-50 flex items-center justify-center px-4">
+            {/* overlay */}
+            <div className="absolute inset-0 bg-black/50" onClick={() => setShowImportModal(false)} />
+            {/* modal content */}
+            <div className="relative z-10 w-full max-w-2xl mx-auto">
+              <div ref={modalRef} tabIndex={-1} className="bg-slate-800 rounded-xl p-6" role="dialog" aria-modal="true" aria-label="Import Matches dialog">
+                <div className="flex justify-between items-center mb-4">
+                  <h3 className="text-lg font-bold text-white">Import Matches</h3>
+                  <button onClick={() => setShowImportModal(false)} className="text-slate-300 hover:text-white">Close</button>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div className="p-4 rounded bg-slate-700 border border-slate-600">
+                    <div className="text-sm text-slate-300 mb-2">MatchSetup JSON</div>
+                    {/* hidden real file input for accessibility */}
+                    <input
+                      ref={matchFileRef}
+                      type="file"
+                      accept="application/json"
+                      className="hidden"
+                      onChange={async (ev) => {
+                        const file = ev.target.files && ev.target.files[0]; if (!file) return;
+                        try {
+                          const txt = await file.text(); const parsed = JSON.parse(txt);
+                          const v = validateMatchSetup(parsed);
+                          setImportMatchFile(parsed);
+                          setImportMatchName(file.name || 'MatchSetup');
+                          setImportMatchValid(v.valid);
+                          setImportMatchSummary(v.summary);
+                          if (!v.valid) setError('MatchSetup JSON appears invalid');
+                        } catch(err){ setError('Invalid JSON for MatchSetup'); }
+                        try { ev.target.value = null; } catch(_) {}
+                      }}
+                    />
+                    <div
+                      onDrop={async (e) => {
+                        e.preventDefault();
+                        const f = e.dataTransfer.files[0];
+                        if (!f) return;
+                        try {
+                          const txt = await f.text(); const parsed = JSON.parse(txt);
+                          const v = validateMatchSetup(parsed);
+                          setImportMatchFile(parsed);
+                          setImportMatchName(f.name || 'MatchSetup');
+                          setImportMatchValid(v.valid);
+                          setImportMatchSummary(v.summary);
+                          if (!v.valid) setError('MatchSetup JSON appears invalid');
+                        } catch(err){ setError('Invalid JSON for MatchSetup'); }
+                      }}
+                      onDragOver={(e) => e.preventDefault()}
+                      className="h-36 flex items-center justify-center bg-slate-800 border-2 border-dashed border-slate-600 rounded cursor-pointer text-center px-3"
+                      onClick={() => { try { matchFileRef.current && matchFileRef.current.click(); } catch(e){} }}
+                      tabIndex={0}
+                      role="button"
+                      onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); try { matchFileRef.current && matchFileRef.current.click(); } catch(err){} } }}
+                    >
+                      <div className="text-slate-400">Drop MatchSetup.json here or click to select</div>
+                    </div>
+                    {importMatchFile && <div className="mt-2 text-xs">
+                      <div className={importMatchValid ? 'text-emerald-400' : 'text-amber-400'}>{importMatchValid ? 'Valid MatchSetup' : 'Invalid MatchSetup'}</div>
+                      <div className="text-slate-300 text-xs mt-1">{importMatchSummary}</div>
+                      <div className="text-slate-400 text-xs mt-1">{importMatchName}</div>
+                    </div>}
+                  </div>
+                  <div className="p-4 rounded bg-slate-700 border border-slate-600">
+                    <div className="text-sm text-slate-300 mb-2">ItemSetup JSON</div>
+                    {/* hidden real file input for accessibility */}
+                    <input
+                      ref={itemFileRef}
+                      type="file"
+                      accept="application/json"
+                      className="hidden"
+                      onChange={async (ev) => {
+                        const file = ev.target.files && ev.target.files[0]; if (!file) return;
+                        try {
+                          const txt = await file.text(); const parsed = JSON.parse(txt);
+                          const v = validateItemSetup(parsed);
+                          setImportItemFile(parsed);
+                          setImportItemName(file.name || 'ItemSetup');
+                          setImportItemValid(v.valid);
+                          setImportItemSummary(v.summary);
+                          if (!v.valid) setError('ItemSetup JSON appears invalid');
+                        } catch(err){ setError('Invalid JSON for ItemSetup'); }
+                        try { ev.target.value = null; } catch(_) {}
+                      }}
+                    />
+                    <div
+                      onDrop={async (e) => {
+                        e.preventDefault();
+                        const f = e.dataTransfer.files[0];
+                        if (!f) return;
+                        try {
+                          const txt = await f.text(); const parsed = JSON.parse(txt);
+                          const v = validateItemSetup(parsed);
+                          setImportItemFile(parsed);
+                          setImportItemName(f.name || 'ItemSetup');
+                          setImportItemValid(v.valid);
+                          setImportItemSummary(v.summary);
+                          if (!v.valid) setError('ItemSetup JSON appears invalid');
+                        } catch(err){ setError('Invalid JSON for ItemSetup'); }
+                      }}
+                      onDragOver={(e) => e.preventDefault()}
+                      className="h-36 flex items-center justify-center bg-slate-800 border-2 border-dashed border-slate-600 rounded cursor-pointer text-center px-3"
+                      onClick={() => { try { itemFileRef.current && itemFileRef.current.click(); } catch(e){} }}
+                      tabIndex={0}
+                      role="button"
+                      onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); try { itemFileRef.current && itemFileRef.current.click(); } catch(err){} } }}
+                    >
+                      <div className="text-slate-400">Drop ItemSetup.json here or click to select</div>
+                    </div>
+                    {importItemFile && <div className="mt-2 text-xs">
+                      <div className={importItemValid ? 'text-emerald-400' : 'text-amber-400'}>{importItemValid ? 'Valid ItemSetup' : 'Invalid ItemSetup'}</div>
+                      <div className="text-slate-300 text-xs mt-1">{importItemSummary}</div>
+                      <div className="text-slate-400 text-xs mt-1">{importItemName}</div>
+                    </div>}
+                  </div>
+                </div>
+                <div className="mt-4 flex justify-end gap-2">
+                  <button onClick={() => { setImportMatchFile(null); setImportItemFile(null); }} className="px-4 py-2 rounded bg-slate-700 text-white">Clear</button>
+                  <button onClick={() => {
+                    if (!importMatchFile || !importItemFile) { setError('Please load both files before importing'); return; }
+                    try { importFromJsonObjects(importMatchFile, importItemFile); setShowImportModal(false); setSuccess('Imported matches from JSON files.'); setImportMatchFile(null); setImportItemFile(null); }
+                    catch(e){ setError('Import failed'); }
+                  }} className="px-4 py-2 rounded bg-emerald-600 text-white">Import</button>
+                </div>
+              </div>
+            </div>
+          </div>, document.body)
+        }
         <div className="flex justify-center mb-4 items-center gap-3">
           <div className="text-sm text-slate-300">Ruleset:</div>
           <div className="text-sm bg-slate-800 border border-slate-600 px-2 py-1 rounded-lg">
@@ -963,6 +1276,7 @@ const MatchBuilder = () => {
               characters={characters}
               capsules={capsules}
               costumes={costumes}
+              sparkingMusic={sparkingMusic}
               aiItems={aiItems}
               rulesets={rulesets || null}
               activeRulesetKey={activeRulesetKey}
@@ -1330,6 +1644,7 @@ const MatchCard = ({
   capsules,
   costumes,
   aiItems,
+  sparkingMusic,
   rulesets,
   activeRulesetKey,
   onDuplicate,
@@ -1398,7 +1713,7 @@ const MatchCard = ({
             aria-label="Duplicate Match"
           >
             <Copy size={16} />
-            <span className="hidden sm:inline ml-2">DUP</span>
+            <span className="hidden sm:inline ml-2">DUPLICATE</span>
           </button>
           <button
             onClick={onRemove}
@@ -1419,6 +1734,7 @@ const MatchCard = ({
             characters={characters}
             capsules={capsules}
             costumes={costumes}
+            sparkingMusic={sparkingMusic}
             aiItems={aiItems}
             rulesets={rulesets || null}
             activeRulesetKey={activeRulesetKey}
@@ -1445,6 +1761,7 @@ const MatchCard = ({
             characters={characters}
             capsules={capsules}
             costumes={costumes}
+            sparkingMusic={sparkingMusic}
             aiItems={aiItems}
             rulesets={rulesets || null}
             activeRulesetKey={activeRulesetKey}
@@ -1476,6 +1793,7 @@ const TeamPanel = ({
   characters,
   capsules,
   costumes,
+  sparkingMusic,
   aiItems,
   rulesets,
   activeRulesetKey,
@@ -1573,6 +1891,7 @@ const TeamPanel = ({
                 characters={characters}
                 capsules={capsules}
                 costumes={costumes}
+                sparkingMusic={sparkingMusic}
                 aiItems={aiItems}
                 rulesets={rulesets}
                 activeRulesetKey={activeRulesetKey}
@@ -1608,6 +1927,7 @@ const CharacterSlot = ({
   characters,
   capsules,
   costumes,
+  sparkingMusic,
   aiItems,
   rulesets,
   activeRulesetKey,
@@ -1617,9 +1937,16 @@ const CharacterSlot = ({
   onReplaceCharacter,
 }) => {
   const [collapsed, setCollapsed] = React.useState(false);
-  const charCostumes = costumes.filter(
-    (c) => c.exclusiveFor === character.name
-  );
+  const charCostumes = (() => {
+    const base = costumes.filter((c) => c.exclusiveFor === character.name);
+    // If a costume ID is already selected but not present in the filtered list,
+    // include it so the Combobox can display the currently-selected costume
+    if (character.costume && !base.find(b => b.id === character.costume)) {
+      const selected = costumes.find(cs => cs.id === character.costume);
+      if (selected) return [selected, ...base];
+    }
+    return base;
+  })();
   const fileInputRef = React.useRef(null);
 
   // compute rule violations for soft mode
@@ -1680,6 +2007,22 @@ const CharacterSlot = ({
               showTooltip={false}
             />
           </div>
+          {sparkingMusic && sparkingMusic.length > 0 && (
+            <div>
+              <label className="block text-xs font-semibold text-pink-300 mb-1 uppercase tracking-wide">
+                Sparking Music
+              </label>
+              <Combobox
+                valueId={character.sparking}
+                items={sparkingMusic}
+                getName={(c) => c.name}
+                placeholder="Select sparking music"
+                onSelect={(id) => onUpdate('sparking', id)}
+                disabled={!character.name}
+                showTooltip={false}
+              />
+            </div>
+          )}
         </div>
 
         <div className="flex flex-col items-end gap-2">
@@ -1825,6 +2168,7 @@ const CharacterSlot = ({
                       costume: character.costume ? (costumes.find(c => c.id === character.costume)?.name || '') : '',
                       capsules: (character.capsules || []).map(cid => capsules.find(c => c.id === cid)?.name || ''),
                       ai: character.ai ? (aiItems.find(a => a.id === character.ai)?.name || '') : '',
+                      sparking: character.sparking ? (sparkingMusic.find(s => s.id === character.sparking)?.name || character.sparking) : '',
                       matchName: matchName,
                       teamName: teamName,
                       slotIndex: index,
@@ -1867,6 +2211,7 @@ const CharacterSlot = ({
                         costume: '',
                         capsules: Array(7).fill(''),
                         ai: '',
+                        sparking: '',
                       };
 
                       if (data.character) {
@@ -1882,6 +2227,16 @@ const CharacterSlot = ({
 
                       if (data.ai) {
                         slot.ai = findAiIdFromValue(data.ai, aiItems);
+                      }
+
+                      if (data.sparking) {
+                        try {
+                          const spName = (data.sparking || '').toString().trim().toLowerCase();
+                          const spObj = sparkingMusic.find(s => (s.name || '').toString().trim().toLowerCase() === spName);
+                          slot.sparking = spObj ? spObj.id : '';
+                        } catch (e) {
+                          slot.sparking = '';
+                        }
                       }
 
                       if (Array.isArray(data.capsules)) {
@@ -1904,6 +2259,7 @@ const CharacterSlot = ({
                         onUpdate('costume', slot.costume);
                         slot.capsules.forEach((cid, ci) => onUpdateCapsule(ci, cid));
                         onUpdate('ai', slot.ai);
+                        onUpdate('sparking', slot.sparking);
                       }
                     } catch (err) { console.error('import character build failed', err); }
                     try { e.target.value = null; } catch (e) {}
