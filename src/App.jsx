@@ -117,6 +117,37 @@ const MatchBuilder = () => {
             ? { ...m, [teamName]: newTeam }
             : m
         ));
+        // Safety-net: normalize fields (name, costume, ai, sparking) after import
+        setMatches((prev) => prev.map((m) => {
+          if (m.id !== matchId) return m;
+          const normalizeTeam = (team) => team.map((ch) => {
+            const out = { ...ch };
+            // populate name if missing
+            if ((!out.name || out.name.trim() === '') && out.id) {
+              out.name = (characters.find(c => c.id === out.id)?.name) || out.name || '';
+            }
+            // costume: try to resolve by id or name
+            if (out.costume) {
+              if (!costumes.find(cs => cs.id === out.costume)) {
+                const cs = costumes.find(cs => (cs.name || '').trim().toLowerCase() === (out.costume || '').toString().trim().toLowerCase());
+                out.costume = cs ? cs.id : out.costume;
+              }
+            }
+            // ai: attempt to resolve name->id
+            if (out.ai && aiItems && aiItems.length > 0) {
+              out.ai = findAiIdFromValue(out.ai, aiItems) || out.ai;
+            }
+            // sparking: resolve if provided as name
+            if (out.sparking) {
+              if (!sparkingMusic.find(s => s.id === out.sparking)) {
+                const sp = sparkingMusic.find(s => (s.name || '').trim().toLowerCase() === (out.sparking || '').toString().trim().toLowerCase());
+                out.sparking = sp ? sp.id : out.sparking;
+              }
+            }
+            return out;
+          });
+          return { ...m, [teamName]: normalizeTeam(newTeam) };
+        }));
         setSuccess(`Imported ${teamName} for match ${matchId}`);
         setError("");
         try { event.target.value = null; } catch (e) {}
@@ -219,6 +250,33 @@ const MatchBuilder = () => {
             ? { ...m, team1, team2 }
             : m
         ));
+        // Safety-net: normalize all teams for this match (resolve names and ids)
+        setMatches((prev) => prev.map((m) => {
+          if (m.id !== matchId) return m;
+          const resolve = (team) => team.map((ch) => {
+            const out = { ...ch };
+            if ((!out.name || out.name.trim() === '') && out.id) {
+              out.name = (characters.find(c => c.id === out.id)?.name) || out.name || '';
+            }
+            if (out.costume) {
+              if (!costumes.find(cs => cs.id === out.costume)) {
+                const cs = costumes.find(cs => (cs.name || '').trim().toLowerCase() === (out.costume || '').toString().trim().toLowerCase());
+                out.costume = cs ? cs.id : out.costume;
+              }
+            }
+            if (out.ai && aiItems && aiItems.length > 0) {
+              out.ai = findAiIdFromValue(out.ai, aiItems) || out.ai;
+            }
+            if (out.sparking) {
+              if (!sparkingMusic.find(s => s.id === out.sparking)) {
+                const sp = sparkingMusic.find(s => (s.name || '').trim().toLowerCase() === (out.sparking || '').toString().trim().toLowerCase());
+                out.sparking = sp ? sp.id : out.sparking;
+              }
+            }
+            return out;
+          });
+          return { ...m, team1: resolve(team1), team2: resolve(team2) };
+        }));
         setSuccess(`Imported match details for match ${matchId}`);
         setError("");
         try { event.target.value = null; } catch (e) {}
@@ -1643,9 +1701,16 @@ const CharacterSlot = ({
   onReplaceCharacter,
 }) => {
   const [collapsed, setCollapsed] = React.useState(false);
-  const charCostumes = costumes.filter(
-    (c) => c.exclusiveFor === character.name
-  );
+  const charCostumes = (() => {
+    const base = costumes.filter((c) => c.exclusiveFor === character.name);
+    // If a costume ID is already selected but not present in the filtered list,
+    // include it so the Combobox can display the currently-selected costume
+    if (character.costume && !base.find(b => b.id === character.costume)) {
+      const selected = costumes.find(cs => cs.id === character.costume);
+      if (selected) return [selected, ...base];
+    }
+    return base;
+  })();
   const fileInputRef = React.useRef(null);
 
   // compute rule violations for soft mode
