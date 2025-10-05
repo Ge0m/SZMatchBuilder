@@ -298,6 +298,15 @@ const MatchBuilder = () => {
   const [rulesets, setRulesets] = useState(null);
   const [activeRulesetKey, setActiveRulesetKey] = useState(null);
   const [collapsedMatches, setCollapsedMatches] = useState({});
+  const [showImportModal, setShowImportModal] = useState(false);
+  const [importMatchFile, setImportMatchFile] = useState(null);
+  const [importItemFile, setImportItemFile] = useState(null);
+  const [importMatchName, setImportMatchName] = useState(null);
+  const [importItemName, setImportItemName] = useState(null);
+  const [importMatchSummary, setImportMatchSummary] = useState("");
+  const [importItemSummary, setImportItemSummary] = useState("");
+  const [importMatchValid, setImportMatchValid] = useState(false);
+  const [importItemValid, setImportItemValid] = useState(false);
   const [matchCounter, setMatchCounter] = useState(1);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -352,11 +361,61 @@ const MatchBuilder = () => {
   const matchFileRef = useRef(null);
   const itemFileRef = useRef(null);
   const importJsonRef = useRef(null);
+  const modalRef = useRef(null);
+  const importButtonRef = useRef(null);
 
   useEffect(() => {
     loadCSVFiles();
     loadRulesets();
   }, []);
+
+  // Focus trap and keyboard handling for the import modal
+  useEffect(() => {
+    if (!showImportModal) {
+      // restore focus to import button if available
+      try { importButtonRef.current && importButtonRef.current.focus(); } catch(e){}
+      return;
+    }
+
+    // when modal opens, focus the modal container
+    try { if (modalRef.current) modalRef.current.focus(); } catch(e){}
+
+    const onKeyDown = (e) => {
+      if (!showImportModal) return;
+      if (e.key === 'Escape') {
+        setShowImportModal(false);
+        e.preventDefault();
+        return;
+      }
+      if (e.key !== 'Tab') return;
+      // focus trap: keep focus within modalRef
+      const root = modalRef.current;
+      if (!root) return;
+      const focusable = root.querySelectorAll('a[href], button, textarea, input, select, [tabindex]:not([tabindex="-1"])');
+      const focusableEls = Array.prototype.filter.call(focusable, (el) => !el.hasAttribute('disabled') && el.getAttribute('tabindex') !== '-1');
+      if (focusableEls.length === 0) {
+        e.preventDefault();
+        return;
+      }
+      const first = focusableEls[0];
+      const last = focusableEls[focusableEls.length - 1];
+      const active = document.activeElement;
+      if (e.shiftKey) {
+        if (active === first || root === active) {
+          last.focus();
+          e.preventDefault();
+        }
+      } else {
+        if (active === last) {
+          first.focus();
+          e.preventDefault();
+        }
+      }
+    };
+
+    document.addEventListener('keydown', onKeyDown);
+    return () => document.removeEventListener('keydown', onKeyDown);
+  }, [showImportModal]);
 
   // Fallback ruleset used when capsule-rules.yaml cannot be loaded or parsed.
   // This represents the "no rules" behavior the site had before rulesets existed.
@@ -845,31 +904,43 @@ const MatchBuilder = () => {
   };
 
   const handleImportMatches = async (event) => {
-    // Clear all existing matches first
-    setMatches([]);
-    const files = event.target.files;
-    if (!files || files.length === 0) return;
-    let matchSetup = null;
-    let itemSetup = null;
+    // New flow: use import modal upload areas instead (backwards-compatible)
+    // If user supplied files via the old single input, attempt to detect which is which
+    const files = Array.from(event.target?.files || []);
+    let matchJson = importMatchFile;
+    let itemJson = importItemFile;
     for (let file of files) {
-      const text = await file.text();
       try {
-        const json = JSON.parse(text);
+        const txt = await file.text();
+        const json = JSON.parse(txt);
         if (json.matchCount) {
-          // Heuristic: if customize keys exist, it's itemSetup
           const isItemSetup = Object.values(json.matchCount)[0]?.customize !== undefined;
-          if (isItemSetup) itemSetup = json;
-          else matchSetup = json;
+          if (isItemSetup) itemJson = json;
+          else matchJson = json;
         }
-      } catch (e) {
-        setError("Invalid JSON file: " + file.name);
-        return;
+      } catch (err) {
+        // ignore invalid files here; user will be notified if both aren't provided
       }
     }
-    if (!matchSetup || !itemSetup) {
-      setError("Both MatchSetup.json and ItemSetup.json are required.");
+    if (!matchJson || !itemJson) {
+      setError("Please provide both MatchSetup and ItemSetup JSON (use the Import Matches dialog).");
       return;
     }
+    try {
+      importFromJsonObjects(matchJson, itemJson);
+      setSuccess("Imported matches from JSON files.");
+      setError("");
+      setImportMatchFile(null);
+      setImportItemFile(null);
+      setShowImportModal(false);
+    } catch (err) {
+      console.error('import error', err);
+      setError('Failed to import JSON files');
+    }
+  };
+
+  // Central importer that operates on parsed JSON objects (matchSetup, itemSetup)
+  const importFromJsonObjects = (matchSetup, itemSetup) => {
     // Parse matches
     const newMatches = Object.entries(matchSetup.matchCount).map(([key, matchData], idx) => {
       const team1 = matchData.targetTeaming.com1.teamMembers
@@ -931,11 +1002,50 @@ const MatchBuilder = () => {
         }
       });
     });
-    setMatches(newMatches);
-    setSuccess("Imported matches from JSON files.");
-    setError("");
-    // reset the input so the same files can be uploaded again without refresh
-    try { event.target.value = null; } catch (e) { /* ignore */ }
+    // Safety-net normalize names and ids
+    const normalized = newMatches.map((m) => ({
+      ...m,
+      team1: m.team1.map((ch) => normalizeImportedChar(ch)),
+      team2: m.team2.map((ch) => normalizeImportedChar(ch)),
+    }));
+    setMatches(normalized);
+  };
+
+  // Simple validators that return { valid: boolean, summary: string }
+  const validateMatchSetup = (obj) => {
+    if (!obj || typeof obj !== 'object' || !obj.matchCount) return { valid: false, summary: 'Missing matchCount' };
+    const count = Object.keys(obj.matchCount || {}).length;
+    return { valid: true, summary: `Match Count: ${count}` };
+  };
+
+  const validateItemSetup = (obj) => {
+    if (!obj || typeof obj !== 'object' || !obj.matchCount) return { valid: false, summary: 'Missing matchCount' };
+    // Use top-level matchCount length as the canonical match count for ItemSetup
+    const count = Object.keys(obj.matchCount || {}).length;
+    return { valid: true, summary: `Match Count: ${count}` };
+  };
+
+  const normalizeImportedChar = (out) => {
+    const res = { ...out };
+    if ((!res.name || res.name.trim() === '') && res.id) {
+      res.name = (characters.find(c => c.id === res.id)?.name) || res.name || '';
+    }
+    if (res.costume) {
+      if (!costumes.find(cs => cs.id === res.costume)) {
+        const cs = costumes.find(cs => (cs.name || '').trim().toLowerCase() === (res.costume || '').toString().trim().toLowerCase());
+        res.costume = cs ? cs.id : res.costume;
+      }
+    }
+    if (res.ai && aiItems && aiItems.length > 0) {
+      res.ai = findAiIdFromValue(res.ai, aiItems) || res.ai;
+    }
+    if (res.sparking) {
+      if (!sparkingMusic.find(s => s.id === res.sparking)) {
+        const sp = sparkingMusic.find(s => (s.name || '').trim().toLowerCase() === (res.sparking || '').toString().trim().toLowerCase());
+        res.sparking = sp ? sp.id : res.sparking;
+      }
+    }
+    return res;
   };
 
   if (loading) {
@@ -1004,18 +1114,144 @@ const MatchBuilder = () => {
               <span className="hidden sm:inline">CLEAR ALL</span>
             </span>
           </button>
-          <label className="bg-gradient-to-r from-blue-600 to-blue-700 text-white px-6 py-3 rounded-xl font-bold text-sm shadow-lg hover:shadow-xl transform hover:scale-105 transition-all border border-blue-500 cursor-pointer flex items-center">
+          <button
+            ref={importButtonRef}
+            onClick={() => setShowImportModal(true)}
+            className="bg-gradient-to-r from-blue-600 to-blue-700 text-white px-6 py-3 rounded-xl font-bold text-sm shadow-lg hover:shadow-xl transform hover:scale-105 transition-all border border-blue-500 flex items-center"
+          >
             <Upload className="mr-2" size={18} />
             <span className="hidden sm:inline">IMPORT MATCHES</span>
-            <input
-              type="file"
-              accept="application/json"
-              multiple
-              style={{ display: "none" }}
-              onChange={handleImportMatches}
-            />
-          </label>
+          </button>
         </div>
+        {showImportModal && createPortal(
+          <div className="fixed inset-0 z-50 flex items-center justify-center px-4">
+            {/* overlay */}
+            <div className="absolute inset-0 bg-black/50" onClick={() => setShowImportModal(false)} />
+            {/* modal content */}
+            <div className="relative z-10 w-full max-w-2xl mx-auto">
+              <div ref={modalRef} tabIndex={-1} className="bg-slate-800 rounded-xl p-6" role="dialog" aria-modal="true" aria-label="Import Matches dialog">
+                <div className="flex justify-between items-center mb-4">
+                  <h3 className="text-lg font-bold text-white">Import Matches</h3>
+                  <button onClick={() => setShowImportModal(false)} className="text-slate-300 hover:text-white">Close</button>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div className="p-4 rounded bg-slate-700 border border-slate-600">
+                    <div className="text-sm text-slate-300 mb-2">MatchSetup JSON</div>
+                    {/* hidden real file input for accessibility */}
+                    <input
+                      ref={matchFileRef}
+                      type="file"
+                      accept="application/json"
+                      className="hidden"
+                      onChange={async (ev) => {
+                        const file = ev.target.files && ev.target.files[0]; if (!file) return;
+                        try {
+                          const txt = await file.text(); const parsed = JSON.parse(txt);
+                          const v = validateMatchSetup(parsed);
+                          setImportMatchFile(parsed);
+                          setImportMatchName(file.name || 'MatchSetup');
+                          setImportMatchValid(v.valid);
+                          setImportMatchSummary(v.summary);
+                          if (!v.valid) setError('MatchSetup JSON appears invalid');
+                        } catch(err){ setError('Invalid JSON for MatchSetup'); }
+                        try { ev.target.value = null; } catch(_) {}
+                      }}
+                    />
+                    <div
+                      onDrop={async (e) => {
+                        e.preventDefault();
+                        const f = e.dataTransfer.files[0];
+                        if (!f) return;
+                        try {
+                          const txt = await f.text(); const parsed = JSON.parse(txt);
+                          const v = validateMatchSetup(parsed);
+                          setImportMatchFile(parsed);
+                          setImportMatchName(f.name || 'MatchSetup');
+                          setImportMatchValid(v.valid);
+                          setImportMatchSummary(v.summary);
+                          if (!v.valid) setError('MatchSetup JSON appears invalid');
+                        } catch(err){ setError('Invalid JSON for MatchSetup'); }
+                      }}
+                      onDragOver={(e) => e.preventDefault()}
+                      className="h-36 flex items-center justify-center bg-slate-800 border-2 border-dashed border-slate-600 rounded cursor-pointer text-center px-3"
+                      onClick={() => { try { matchFileRef.current && matchFileRef.current.click(); } catch(e){} }}
+                      tabIndex={0}
+                      role="button"
+                      onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); try { matchFileRef.current && matchFileRef.current.click(); } catch(err){} } }}
+                    >
+                      <div className="text-slate-400">Drop MatchSetup.json here or click to select</div>
+                    </div>
+                    {importMatchFile && <div className="mt-2 text-xs">
+                      <div className={importMatchValid ? 'text-emerald-400' : 'text-amber-400'}>{importMatchValid ? 'Valid MatchSetup' : 'Invalid MatchSetup'}</div>
+                      <div className="text-slate-300 text-xs mt-1">{importMatchSummary}</div>
+                      <div className="text-slate-400 text-xs mt-1">{importMatchName}</div>
+                    </div>}
+                  </div>
+                  <div className="p-4 rounded bg-slate-700 border border-slate-600">
+                    <div className="text-sm text-slate-300 mb-2">ItemSetup JSON</div>
+                    {/* hidden real file input for accessibility */}
+                    <input
+                      ref={itemFileRef}
+                      type="file"
+                      accept="application/json"
+                      className="hidden"
+                      onChange={async (ev) => {
+                        const file = ev.target.files && ev.target.files[0]; if (!file) return;
+                        try {
+                          const txt = await file.text(); const parsed = JSON.parse(txt);
+                          const v = validateItemSetup(parsed);
+                          setImportItemFile(parsed);
+                          setImportItemName(file.name || 'ItemSetup');
+                          setImportItemValid(v.valid);
+                          setImportItemSummary(v.summary);
+                          if (!v.valid) setError('ItemSetup JSON appears invalid');
+                        } catch(err){ setError('Invalid JSON for ItemSetup'); }
+                        try { ev.target.value = null; } catch(_) {}
+                      }}
+                    />
+                    <div
+                      onDrop={async (e) => {
+                        e.preventDefault();
+                        const f = e.dataTransfer.files[0];
+                        if (!f) return;
+                        try {
+                          const txt = await f.text(); const parsed = JSON.parse(txt);
+                          const v = validateItemSetup(parsed);
+                          setImportItemFile(parsed);
+                          setImportItemName(f.name || 'ItemSetup');
+                          setImportItemValid(v.valid);
+                          setImportItemSummary(v.summary);
+                          if (!v.valid) setError('ItemSetup JSON appears invalid');
+                        } catch(err){ setError('Invalid JSON for ItemSetup'); }
+                      }}
+                      onDragOver={(e) => e.preventDefault()}
+                      className="h-36 flex items-center justify-center bg-slate-800 border-2 border-dashed border-slate-600 rounded cursor-pointer text-center px-3"
+                      onClick={() => { try { itemFileRef.current && itemFileRef.current.click(); } catch(e){} }}
+                      tabIndex={0}
+                      role="button"
+                      onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); try { itemFileRef.current && itemFileRef.current.click(); } catch(err){} } }}
+                    >
+                      <div className="text-slate-400">Drop ItemSetup.json here or click to select</div>
+                    </div>
+                    {importItemFile && <div className="mt-2 text-xs">
+                      <div className={importItemValid ? 'text-emerald-400' : 'text-amber-400'}>{importItemValid ? 'Valid ItemSetup' : 'Invalid ItemSetup'}</div>
+                      <div className="text-slate-300 text-xs mt-1">{importItemSummary}</div>
+                      <div className="text-slate-400 text-xs mt-1">{importItemName}</div>
+                    </div>}
+                  </div>
+                </div>
+                <div className="mt-4 flex justify-end gap-2">
+                  <button onClick={() => { setImportMatchFile(null); setImportItemFile(null); }} className="px-4 py-2 rounded bg-slate-700 text-white">Clear</button>
+                  <button onClick={() => {
+                    if (!importMatchFile || !importItemFile) { setError('Please load both files before importing'); return; }
+                    try { importFromJsonObjects(importMatchFile, importItemFile); setShowImportModal(false); setSuccess('Imported matches from JSON files.'); setImportMatchFile(null); setImportItemFile(null); }
+                    catch(e){ setError('Import failed'); }
+                  }} className="px-4 py-2 rounded bg-emerald-600 text-white">Import</button>
+                </div>
+              </div>
+            </div>
+          </div>, document.body)
+        }
         <div className="flex justify-center mb-4 items-center gap-3">
           <div className="text-sm text-slate-300">Ruleset:</div>
           <div className="text-sm bg-slate-800 border border-slate-600 px-2 py-1 rounded-lg">
