@@ -66,7 +66,16 @@ const MatchBuilder = () => {
         members: team.map((char) => ({
           character: char.name || (characters.find(c => c.id === char.id)?.name || ""),
           costume: char.costume ? (costumes.find(c => c.id === char.costume)?.name || char.costume) : "",
-          capsules: (char.capsules || []).filter(Boolean).map(cid => capsules.find(c => c.id === cid)?.name || cid),
+          // map capsule ids to names, but filter out engine-placeholder ids like '00_0_0061'
+          capsules: (char.capsules || [])
+            .map((cid) => {
+              const found = capsules.find((c) => c.id === cid);
+              if (found) return found.name;
+              // treat unknown engine placeholder capsule ids (00_0_*) as empty
+              if (cid && cid.toString().startsWith('00_0_')) return '';
+              return cid;
+            })
+            .filter(Boolean),
           ai: char.ai ? (aiItems.find(ai => ai.id === char.ai)?.name || char.ai) : "",
           sparking: char.sparking ? (sparkingMusic.find(s => s.id === char.sparking)?.name || char.sparking) : ""
         }))
@@ -92,6 +101,12 @@ const MatchBuilder = () => {
         const text = await file.text();
         const teamYaml = yaml.load(text);
         if (!teamYaml || !teamYaml.members) throw new Error("Invalid team YAML");
+        // normalize capsule display name to strip cost suffixes like 'Name (1)'
+        const normalizeCapsuleName = (s) => {
+          if (!s && s !== 0) return '';
+          const raw = String(s).trim();
+          return raw.replace(/\s*\(\d+\)\s*$/, '').trim();
+        };
         const newTeam = (teamYaml.members || []).map((m) => {
           console.debug('importSingleTeam: incoming member ai:', m.ai, 'aiItems.length:', aiItems.length, 'resolved:', findAiIdFromValue(m.ai, aiItems));
           const nameVal = (m.character || "").toString().trim();
@@ -102,8 +117,9 @@ const MatchBuilder = () => {
             costume: m.costume ? (costumes.find(c => (c.name || "").trim().toLowerCase() === (m.costume || "").toString().trim().toLowerCase())?.id || "") : "",
             capsules: Array(7).fill("").map((_, i) => {
               if (m.capsules && m.capsules[i]) {
-                const capName = (m.capsules[i] || "").toString().trim();
-                return capsules.find(c => (c.name || "").trim().toLowerCase() === capName.toLowerCase())?.id || "";
+                const capNameRaw = (m.capsules[i] || "").toString().trim();
+                const capName = normalizeCapsuleName(capNameRaw).toLowerCase();
+                return capsules.find(c => (c.name || "").trim().toLowerCase() === capName)?.id || "";
               }
               return "";
             }),
@@ -111,6 +127,19 @@ const MatchBuilder = () => {
             sparking: m.sparking ? (sparkingMusic.find(s => (s.name || "").trim().toLowerCase() === (m.sparking || "").toString().trim().toLowerCase())?.id || "") : ""
           };
         });
+
+        // If the YAML provides a match name, set it on the match
+        if (teamYaml.matchName) {
+          setMatches((prev) => prev.map((m) => m.id === matchId ? { ...m, name: teamYaml.matchName } : m));
+        }
+        // If the YAML provides a teamName, set the display name for this team
+        if (teamYaml.teamName) {
+          if (teamName === 'team1') {
+            setMatches((prev) => prev.map((m) => m.id === matchId ? { ...m, team1Name: teamYaml.teamName } : m));
+          } else if (teamName === 'team2') {
+            setMatches((prev) => prev.map((m) => m.id === matchId ? { ...m, team2Name: teamYaml.teamName } : m));
+          }
+        }
 
         setMatches((prev) => prev.map((m) =>
           m.id === matchId
@@ -171,19 +200,32 @@ const MatchBuilder = () => {
       team1: (match.team1 || []).map((char) => ({
         character: char.name || (characters.find(c => c.id === char.id)?.name || ""),
         costume: char.costume ? (costumes.find(c => c.id === char.costume)?.name || char.costume) : "",
-        capsules: (char.capsules || []).filter(Boolean).map(cid => capsules.find(c => c.id === cid)?.name || cid),
+        capsules: (char.capsules || [])
+          .map((cid) => {
+            const found = capsules.find((c) => c.id === cid);
+            if (found) return found.name;
+            if (cid && cid.toString().startsWith('00_0_')) return '';
+            return cid;
+          })
+          .filter(Boolean),
           ai: char.ai ? (aiItems.find(ai => ai.id === char.ai)?.name || char.ai) : "",
           sparking: char.sparking ? (sparkingMusic.find(s => s.id === char.sparking)?.name || char.sparking) : ""
       })),
       team2: (match.team2 || []).map((char) => ({
         character: char.name || (characters.find(c => c.id === char.id)?.name || ""),
         costume: char.costume ? (costumes.find(c => c.id === char.costume)?.name || char.costume) : "",
-        capsules: (char.capsules || []).filter(Boolean).map(cid => {
-          const cap = capsules.find(c => c.id === cid);
-          const name = cap ? cap.name : cid;
-          const cost = cap ? Number(cap.cost || cap.Cost || 0) : 0;
-          return `${name}${cost ? ` (${cost})` : ''}`;
-        }),
+        capsules: (char.capsules || [])
+          .map((cid) => {
+            const cap = capsules.find((c) => c.id === cid);
+            if (cap) {
+              const name = cap.name;
+              const cost = Number(cap.cost || cap.Cost || 0) || 0;
+              return `${name}${cost ? ` (${cost})` : ''}`;
+            }
+            if (cid && cid.toString().startsWith('00_0_')) return '';
+            return cid;
+          })
+          .filter(Boolean),
           ai: char.ai ? (aiItems.find(ai => ai.id === char.ai)?.name || char.ai) : "",
           sparking: char.sparking ? (sparkingMusic.find(s => s.id === char.sparking)?.name || char.sparking) : ""
       }))
@@ -206,7 +248,24 @@ const MatchBuilder = () => {
       try {
         const matchYaml = yaml.load(text);
         if (!matchYaml || !matchYaml.matchName) throw new Error("Invalid YAML");
+        // If the YAML provides match/team display names, set them on the match object
+        if (matchYaml.matchName) {
+          setMatches((prev) => prev.map((m) => m.id === matchId ? { ...m, name: matchYaml.matchName } : m));
+        }
+        if (matchYaml.team1Name) {
+          setMatches((prev) => prev.map((m) => m.id === matchId ? { ...m, team1Name: matchYaml.team1Name } : m));
+        }
+        if (matchYaml.team2Name) {
+          setMatches((prev) => prev.map((m) => m.id === matchId ? { ...m, team2Name: matchYaml.team2Name } : m));
+        }
         // Convert display names back to IDs for state
+        // normalize capsule display name to strip cost suffixes like 'Name (1)'
+        const normalizeCapsuleName = (s) => {
+          if (!s && s !== 0) return '';
+          const raw = String(s).trim();
+          return raw.replace(/\s*\(\d+\)\s*$/, '').trim();
+        };
+
         const team1 = (matchYaml.team1 || []).map((char) => {
           console.debug('importSingleMatch: team1 member ai:', char.ai, 'aiItems.length:', aiItems.length, 'resolved:', findAiIdFromValue(char.ai, aiItems));
           const nameVal = (char.character || "").toString().trim();
@@ -217,8 +276,9 @@ const MatchBuilder = () => {
             costume: char.costume ? (costumes.find(c => (c.name || "").trim().toLowerCase() === (char.costume || "").toString().trim().toLowerCase())?.id || "") : "",
             capsules: Array(7).fill("").map((_, i) => {
               if (char.capsules && char.capsules[i]) {
-                const capName = (char.capsules[i] || "").toString().trim();
-                return capsules.find(c => (c.name || "").trim().toLowerCase() === capName.toLowerCase())?.id || "";
+                const capNameRaw = (char.capsules[i] || "").toString().trim();
+                const capName = normalizeCapsuleName(capNameRaw).toLowerCase();
+                return capsules.find(c => (c.name || "").trim().toLowerCase() === capName)?.id || "";
               }
               return "";
             }),
@@ -236,8 +296,9 @@ const MatchBuilder = () => {
             costume: char.costume ? (costumes.find(c => (c.name || "").trim().toLowerCase() === (char.costume || "").toString().trim().toLowerCase())?.id || "") : "",
             capsules: Array(7).fill("").map((_, i) => {
               if (char.capsules && char.capsules[i]) {
-                const capName = (char.capsules[i] || "").toString().trim();
-                return capsules.find(c => (c.name || "").trim().toLowerCase() === capName.toLowerCase())?.id || "";
+                const capNameRaw = (char.capsules[i] || "").toString().trim();
+                const capName = normalizeCapsuleName(capNameRaw).toLowerCase();
+                return capsules.find(c => (c.name || "").trim().toLowerCase() === capName)?.id || "";
               }
               return "";
             }),
