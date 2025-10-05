@@ -67,7 +67,8 @@ const MatchBuilder = () => {
           character: char.name || (characters.find(c => c.id === char.id)?.name || ""),
           costume: char.costume ? (costumes.find(c => c.id === char.costume)?.name || char.costume) : "",
           capsules: (char.capsules || []).filter(Boolean).map(cid => capsules.find(c => c.id === cid)?.name || cid),
-          ai: char.ai ? (aiItems.find(ai => ai.id === char.ai)?.name || char.ai) : ""
+          ai: char.ai ? (aiItems.find(ai => ai.id === char.ai)?.name || char.ai) : "",
+          sparking: char.sparking ? (sparkingMusic.find(s => s.id === char.sparking)?.name || char.sparking) : ""
         }))
       };
       const yamlStr = yaml.dump(teamYaml, { noRefs: true, lineWidth: 120 });
@@ -83,7 +84,7 @@ const MatchBuilder = () => {
   const importSingleTeam = async (event, matchId, teamName) => {
     // Clear the target team first so previous selections are removed — use 5 empty slots
     const emptySlots = () => Array.from({ length: 5 }, () => ({ name: "", id: "", capsules: Array(7).fill(""), costume: "", ai: "" }));
-    setMatches(prev => prev.map(m => m.id === matchId ? { ...m, [teamName]: emptySlots() } : m));
+      setMatches(prev => prev.map(m => m.id === matchId ? { ...m, [teamName]: emptySlots().map(slot => ({ ...slot, sparking: "" })) } : m));
     const files = event.target.files;
     if (!files || files.length === 0) return;
     for (let file of files) {
@@ -106,7 +107,8 @@ const MatchBuilder = () => {
               }
               return "";
             }),
-            ai: m.ai ? findAiIdFromValue(m.ai, aiItems) : ""
+            ai: m.ai ? findAiIdFromValue(m.ai, aiItems) : "",
+            sparking: m.sparking ? (sparkingMusic.find(s => (s.name || "").trim().toLowerCase() === (m.sparking || "").toString().trim().toLowerCase())?.id || "") : ""
           };
         });
 
@@ -139,7 +141,8 @@ const MatchBuilder = () => {
         character: char.name || (characters.find(c => c.id === char.id)?.name || ""),
         costume: char.costume ? (costumes.find(c => c.id === char.costume)?.name || char.costume) : "",
         capsules: (char.capsules || []).filter(Boolean).map(cid => capsules.find(c => c.id === cid)?.name || cid),
-        ai: char.ai ? (aiItems.find(ai => ai.id === char.ai)?.name || char.ai) : ""
+          ai: char.ai ? (aiItems.find(ai => ai.id === char.ai)?.name || char.ai) : "",
+          sparking: char.sparking ? (sparkingMusic.find(s => s.id === char.sparking)?.name || char.sparking) : ""
       })),
       team2: (match.team2 || []).map((char) => ({
         character: char.name || (characters.find(c => c.id === char.id)?.name || ""),
@@ -150,7 +153,8 @@ const MatchBuilder = () => {
           const cost = cap ? Number(cap.cost || cap.Cost || 0) : 0;
           return `${name}${cost ? ` (${cost})` : ''}`;
         }),
-        ai: char.ai ? (aiItems.find(ai => ai.id === char.ai)?.name || char.ai) : ""
+          ai: char.ai ? (aiItems.find(ai => ai.id === char.ai)?.name || char.ai) : "",
+          sparking: char.sparking ? (sparkingMusic.find(s => s.id === char.sparking)?.name || char.sparking) : ""
       }))
     };
     const yamlStr = yaml.dump(matchYaml, { noRefs: true, lineWidth: 120 });
@@ -162,7 +166,7 @@ const MatchBuilder = () => {
   // Helper to import a single match
   const importSingleMatch = async (event, matchId) => {
     // Clear both teams for this match before importing (5 empty slots each)
-    const emptySlots = () => Array.from({ length: 5 }, () => ({ name: "", id: "", capsules: Array(7).fill(""), costume: "", ai: "" }));
+  const emptySlots = () => Array.from({ length: 5 }, () => ({ name: "", id: "", capsules: Array(7).fill(""), costume: "", ai: "", sparking: "" }));
     setMatches(prev => prev.map(m => m.id === matchId ? { ...m, team1: emptySlots(), team2: emptySlots() } : m));
     const files = event.target.files;
     if (!files || files.length === 0) return;
@@ -187,7 +191,8 @@ const MatchBuilder = () => {
               }
               return "";
             }),
-            ai: char.ai ? findAiIdFromValue(char.ai, aiItems) : ""
+            ai: char.ai ? findAiIdFromValue(char.ai, aiItems) : "",
+            sparking: char.sparking ? (sparkingMusic.find(s => (s.name || "").trim().toLowerCase() === (char.sparking || "").toString().trim().toLowerCase())?.id || "") : ""
           };
         });
         const team2 = (matchYaml.team2 || []).map((char) => {
@@ -205,7 +210,8 @@ const MatchBuilder = () => {
               }
               return "";
             }),
-            ai: char.ai ? findAiIdFromValue(char.ai, aiItems) : ""
+            ai: char.ai ? findAiIdFromValue(char.ai, aiItems) : "",
+            sparking: char.sparking ? (sparkingMusic.find(s => (s.name || "").trim().toLowerCase() === (char.sparking || "").toString().trim().toLowerCase())?.id || "") : ""
           };
         });
         setMatches((prev) => prev.map((m) =>
@@ -228,6 +234,7 @@ const MatchBuilder = () => {
   const [characters, setCharacters] = useState([]);
   const [capsules, setCapsules] = useState([]);
   const [costumes, setCostumes] = useState([]);
+  const [sparkingMusic, setSparkingMusic] = useState([]);
   const [aiItems, setAiItems] = useState([]);
   const [matches, setMatches] = useState([]);
   const [rulesets, setRulesets] = useState(null);
@@ -416,6 +423,7 @@ const MatchBuilder = () => {
       const caps = [];
       const costs = [];
       const ai = [];
+      const sparking = [];
       // helper to split CSV line respecting quoted fields with commas
       const splitLine = (line) => {
         const res = [];
@@ -470,11 +478,15 @@ const MatchBuilder = () => {
           if (item.type === "Capsule") caps.push(item);
           else if (item.type === "Costume") costs.push(item);
           else if (item.type === "AI") ai.push(item);
+          else if ((item.type || '').toString().trim() === 'Sparking BGM') {
+            sparking.push(item);
+          }
         }
       }
       setCapsules(caps);
       setCostumes(costs);
       setAiItems(ai);
+      setSparkingMusic(sparking);
     } catch (err) {
       console.error("Failed to load capsules:", err);
     }
@@ -616,6 +628,7 @@ const MatchBuilder = () => {
         id: slotObj?.id || "",
         costume: slotObj?.costume || "",
         ai: slotObj?.ai || "",
+        sparking: slotObj?.sparking || "",
         capsules: Array.isArray(slotObj?.capsules)
           ? slotObj.capsules.map((c) => (c || ""))
           : Array(7).fill("")
@@ -632,7 +645,7 @@ const MatchBuilder = () => {
 
       // If the team array is shorter than the target index, extend with empty slots
       while (index >= team.length) {
-        team.push({ name: "", id: "", capsules: Array(7).fill(""), costume: "", ai: "" });
+        team.push({ name: "", id: "", capsules: Array(7).fill(""), costume: "", ai: "", sparking: "" });
       }
       // Debug: log previous and new slot for visibility when importing
       // replaceCharacter performed (debug logs removed)
@@ -746,6 +759,7 @@ const MatchBuilder = () => {
           ...char.capsules.filter((c) => c).map((c) => ({ key: c }))
         );
         if (char.ai) allItems.push({ key: char.ai });
+        if (char.sparking) allItems.push({ key: char.sparking });
 
         if (allItems.length === 0) allItems.push({ key: "None" });
 
@@ -803,19 +817,21 @@ const MatchBuilder = () => {
       const team1 = matchData.targetTeaming.com1.teamMembers
         .map((m) => ({
           id: m.key !== "None" ? m.key : "",
-          name: "",
+          name: m.key !== "None" ? (characters.find(c => c.id === m.key)?.name || "") : "",
           capsules: Array(7).fill(""),
           costume: "",
           ai: "",
+          sparking: "",
         }))
         .filter((char) => char.id !== "");
       const team2 = matchData.targetTeaming.com2.teamMembers
         .map((m) => ({
           id: m.key !== "None" ? m.key : "",
-          name: "",
+          name: m.key !== "None" ? (characters.find(c => c.id === m.key)?.name || "") : "",
           capsules: Array(7).fill(""),
           costume: "",
           ai: "",
+          sparking: "",
         }))
         .filter((char) => char.id !== "");
       return {
@@ -836,20 +852,23 @@ const MatchBuilder = () => {
         for (let team of [newMatches[idx].team1, newMatches[idx].team2]) {
           const char = team.find((c) => c.id === charId);
           if (char) {
-            // Fill items
+            // Fill items (capsules, costume, ai, sparking)
             const settings = charData.targetSettings[2].equipItems.concat(charData.targetSettings[3].equipItems);
             let capsules = [];
             let costume = "";
             let ai = "";
+            let sparking = "";
             settings.forEach((item) => {
               if (!item.key || item.key === "None") return;
               if (item.key.startsWith("00_1_")) costume = item.key;
               else if (item.key.startsWith("00_7_")) ai = item.key;
+              else if (item.key.startsWith("00_6_")) sparking = item.key;
               else capsules.push(item.key);
             });
             char.capsules = [...capsules, ...Array(7 - capsules.length).fill("")].slice(0, 7);
             char.costume = costume;
             char.ai = ai;
+            char.sparking = sparking;
           }
         }
       });
@@ -963,6 +982,7 @@ const MatchBuilder = () => {
               characters={characters}
               capsules={capsules}
               costumes={costumes}
+              sparkingMusic={sparkingMusic}
               aiItems={aiItems}
               rulesets={rulesets || null}
               activeRulesetKey={activeRulesetKey}
@@ -1330,6 +1350,7 @@ const MatchCard = ({
   capsules,
   costumes,
   aiItems,
+  sparkingMusic,
   rulesets,
   activeRulesetKey,
   onDuplicate,
@@ -1398,7 +1419,7 @@ const MatchCard = ({
             aria-label="Duplicate Match"
           >
             <Copy size={16} />
-            <span className="hidden sm:inline ml-2">DUP</span>
+            <span className="hidden sm:inline ml-2">DUPLICATE</span>
           </button>
           <button
             onClick={onRemove}
@@ -1419,6 +1440,7 @@ const MatchCard = ({
             characters={characters}
             capsules={capsules}
             costumes={costumes}
+            sparkingMusic={sparkingMusic}
             aiItems={aiItems}
             rulesets={rulesets || null}
             activeRulesetKey={activeRulesetKey}
@@ -1445,6 +1467,7 @@ const MatchCard = ({
             characters={characters}
             capsules={capsules}
             costumes={costumes}
+            sparkingMusic={sparkingMusic}
             aiItems={aiItems}
             rulesets={rulesets || null}
             activeRulesetKey={activeRulesetKey}
@@ -1476,6 +1499,7 @@ const TeamPanel = ({
   characters,
   capsules,
   costumes,
+  sparkingMusic,
   aiItems,
   rulesets,
   activeRulesetKey,
@@ -1573,6 +1597,7 @@ const TeamPanel = ({
                 characters={characters}
                 capsules={capsules}
                 costumes={costumes}
+                sparkingMusic={sparkingMusic}
                 aiItems={aiItems}
                 rulesets={rulesets}
                 activeRulesetKey={activeRulesetKey}
@@ -1608,6 +1633,7 @@ const CharacterSlot = ({
   characters,
   capsules,
   costumes,
+  sparkingMusic,
   aiItems,
   rulesets,
   activeRulesetKey,
@@ -1680,6 +1706,22 @@ const CharacterSlot = ({
               showTooltip={false}
             />
           </div>
+          {sparkingMusic && sparkingMusic.length > 0 && (
+            <div>
+              <label className="block text-xs font-semibold text-pink-300 mb-1 uppercase tracking-wide">
+                Sparking Music
+              </label>
+              <Combobox
+                valueId={character.sparking}
+                items={sparkingMusic}
+                getName={(c) => c.name}
+                placeholder="Select sparking music"
+                onSelect={(id) => onUpdate('sparking', id)}
+                disabled={!character.name}
+                showTooltip={false}
+              />
+            </div>
+          )}
         </div>
 
         <div className="flex flex-col items-end gap-2">
@@ -1825,6 +1867,7 @@ const CharacterSlot = ({
                       costume: character.costume ? (costumes.find(c => c.id === character.costume)?.name || '') : '',
                       capsules: (character.capsules || []).map(cid => capsules.find(c => c.id === cid)?.name || ''),
                       ai: character.ai ? (aiItems.find(a => a.id === character.ai)?.name || '') : '',
+                      sparking: character.sparking ? (sparkingMusic.find(s => s.id === character.sparking)?.name || character.sparking) : '',
                       matchName: matchName,
                       teamName: teamName,
                       slotIndex: index,
@@ -1867,6 +1910,7 @@ const CharacterSlot = ({
                         costume: '',
                         capsules: Array(7).fill(''),
                         ai: '',
+                        sparking: '',
                       };
 
                       if (data.character) {
@@ -1882,6 +1926,16 @@ const CharacterSlot = ({
 
                       if (data.ai) {
                         slot.ai = findAiIdFromValue(data.ai, aiItems);
+                      }
+
+                      if (data.sparking) {
+                        try {
+                          const spName = (data.sparking || '').toString().trim().toLowerCase();
+                          const spObj = sparkingMusic.find(s => (s.name || '').toString().trim().toLowerCase() === spName);
+                          slot.sparking = spObj ? spObj.id : '';
+                        } catch (e) {
+                          slot.sparking = '';
+                        }
                       }
 
                       if (Array.isArray(data.capsules)) {
@@ -1904,6 +1958,7 @@ const CharacterSlot = ({
                         onUpdate('costume', slot.costume);
                         slot.capsules.forEach((cid, ci) => onUpdateCapsule(ci, cid));
                         onUpdate('ai', slot.ai);
+                        onUpdate('sparking', slot.sparking);
                       }
                     } catch (err) { console.error('import character build failed', err); }
                     try { e.target.value = null; } catch (e) {}
