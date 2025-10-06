@@ -1,29 +1,22 @@
 {
-  "name": "sz-match-builder",
+  "name": "sz-match-builder-monorepo",
   "version": "1.0.0",
   "private": true,
   "homepage": "http://Ge0m.github.io/SZMatchBuilder",
-  "dependencies": {
-    "@floating-ui/react-dom": "^2.1.6",
-    "js-yaml": "^4.1.0",
-    "lucide-react": "^0.263.1",
-    "react": "^18.2.0",
-    "react-dom": "^18.2.0"
+  "workspaces": [
+    "apps/matchbuilder",
+    "apps/analyzer"
+  ],
+  "scripts": {
+    "build": "npm run build --workspace=apps/matchbuilder",
+    "build:analyzer": "npm run build --workspace=apps/analyzer",
+    "build:all": "npm run build:analyzer && npm run build",
+    "dev": "npm run dev --workspace=apps/matchbuilder",
+    "dev:analyzer": "npm run dev --workspace=apps/analyzer",
+    "predeploy": "npm run build:all",
+    "deploy": "gh-pages -d dist"
   },
   "devDependencies": {
-    "@tailwindcss/postcss": "^4.1.14",
-    "@vitejs/plugin-react": "^4.0.0",
-    "autoprefixer": "^10.4.14",
-    "gh-pages": "^5.0.0",
-    "postcss": "^8.5.6",
-    "tailwindcss": "^3.3.3",
-    "vite": "^7.1.8"
-  },
-  "scripts": {
-    "dev": "vite",
-    "build": "vite build",
-    "preview": "vite preview",
-    "predeploy": "npm run build",
-    "deploy": "gh-pages -d dist"
+    "gh-pages": "^5.0.0"
   }
 }

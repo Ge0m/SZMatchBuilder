@@ -30,10 +30,12 @@ jobs:
           cache: 'npm'
 
       - name: Install dependencies (main app)
+        working-directory: apps/matchbuilder
         run: npm ci
 
       - name: Build main app
-        run: npm run build
+        working-directory: apps/matchbuilder
+        run: npm run build -- --outDir=../../dist
 
       - name: Install dependencies (analyzer)
         working-directory: apps/analyzer

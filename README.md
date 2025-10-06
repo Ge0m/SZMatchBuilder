@@ -1,21 +1,57 @@
 # SZMatchBuilder
 
-DBZ Sparking Zero Match Builder
+DBZ Sparking Zero Match Builder - A monorepo containing multiple applications
+
+## Applications
+
+This repository contains two applications:
+
+- **Match Builder** (`apps/matchbuilder/`) - Main SZ Match Builder application
+- **Analyzer** (`apps/analyzer/`) - Battle Result Analyzer application
 
 ## Development
 
-This repository uses a `Development` branch for ongoing development work. The `main` branch contains stable releases.
+This repository uses a `dev-branch` for ongoing development work. The `main` branch contains stable releases.
+
+### Getting Started
+
+Install dependencies for all workspace apps:
+```bash
+npm install
+```
+
+### Development Commands
+
+**Main Match Builder app:**
+```bash
+npm run dev              # Start development server
+```
+
+**Analyzer app:**
+```bash
+npm run dev:analyzer     # Start analyzer development server
+```
+
+**Build commands:**
+```bash
+npm run build           # Build main app only
+npm run build:analyzer  # Build analyzer app only
+npm run build:all       # Build both applications
+```
 
 ## Deployment
 
-The application is automatically deployed to GitHub Pages when changes are pushed to the `main` or `Development` branches.
+Both applications are automatically deployed to GitHub Pages when changes are pushed to the `main` or `dev-branch` branches.
+
+- Main app: https://ge0m.github.io/SZMatchBuilder/
+- Analyzer app: https://ge0m.github.io/SZMatchBuilder/analyzer/
 
 ### Automatic Deployment
 
 The GitHub Actions workflow (`.github/workflows/deploy.yml`) will:
-1. Install dependencies
-2. Build the application using Vite
-3. Deploy the `dist` folder to GitHub Pages
+1. Install dependencies for both applications
+2. Build both applications using their respective build processes
+3. Deploy the combined `dist` folder to GitHub Pages
 
 ### Manual Deployment
 
@@ -26,14 +62,23 @@ You can also trigger a deployment manually:
 
 ### Local Build
 
-To build the application locally:
+To build both applications locally:
 ```bash
 npm install
-npm run build
+npm run build:all
 ```
 
-The built files will be in the `dist` directory.
+The built files will be in the `dist` directory with the following structure:
+```
+dist/
+├── index.html          # Main app
+├── assets/             # Main app assets
+└── analyzer/           # Analyzer app
+    ├── index.html
+    └── assets/
+```
 
 ### GitHub Pages Configuration
 
-The application is configured to be served from the `/SZMatchBuilder/` base path (see `vite.config.js`).
+The main application is configured to be served from the `/SZMatchBuilder/` base path (see `apps/matchbuilder/vite.config.js`).
+The analyzer application is built to the `/analyzer/` subdirectory.
