@@ -29,11 +29,19 @@ jobs:
           node-version: '20'
           cache: 'npm'
 
-      - name: Install dependencies
+      - name: Install dependencies (main app)
         run: npm ci
 
-      - name: Build
+      - name: Build main app
         run: npm run build
+
+      - name: Install dependencies (analyzer)
+        working-directory: apps/analyzer
+        run: npm ci
+
+      - name: Build analyzer app
+        working-directory: apps/analyzer
+        run: npm run build -- --outDir=../../dist/analyzer
 
       - name: Setup Pages
         uses: actions/configure-pages@v4
