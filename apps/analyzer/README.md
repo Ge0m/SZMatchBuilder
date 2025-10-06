@@ -15,4 +15,4 @@ npm run dev
 npm run build
 ```
 
-Build output will be placed in `../../docs/analyzer` for GitHub Pages hosting.
+Build output will be placed in `../../dist/analyzer` for GitHub Pages hosting.
