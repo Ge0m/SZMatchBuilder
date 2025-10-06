@@ -27,10 +27,6 @@ jobs:
       - name: Build analyzer app
         run: npm run build
 
-      - name: Copy build to docs/analyzer
-        run: |
-          mkdir -p ../../docs/analyzer
-          cp -r dist/* ../../docs/analyzer/
 
       - name: Commit and push docs/analyzer
         run: |
