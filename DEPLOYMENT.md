@@ -2,16 +2,22 @@
 
 ## Overview
 
-This document explains the GitHub Pages deployment configuration for the SZMatchBuilder application.
+This document explains the GitHub Pages deployment configuration for the SZMatchBuilder monorepo application. The repository now contains multiple apps under the `apps/` directory:
+- `apps/matchbuilder` - Main SZ Match Builder application
+- `apps/analyzer` - Battle Result Analyzer application
+
+## Project Structure
+
+This is now a monorepo with workspaces configured in the root `package.json`. Each app has its own build configuration while being deployed together to GitHub Pages.
 
 ## Configuration Files
 
 ### 1. `.github/workflows/deploy.yml`
-The GitHub Actions workflow that automates the build and deployment process.
+The GitHub Actions workflow that automates the build and deployment process for both applications.
 
 **Triggers:**
 - Push to `main` branch
-- Push to `Development` branch  
+- Push to `dev-branch` branch  
 - Manual trigger via `workflow_dispatch`
 
 **Permissions:**
@@ -20,11 +26,13 @@ The GitHub Actions workflow that automates the build and deployment process.
 - `id-token: write` - Required for GitHub Pages deployment
 
 **Jobs:**
-1. **build** - Builds the application
+1. **build** - Builds both applications
    - Checks out the code
-   - Sets up Node.js 18
-   - Installs dependencies with `npm ci`
-   - Builds the app with `npm run build`
+   - Sets up Node.js 20
+   - Installs dependencies for the main app with `npm ci` in `apps/matchbuilder`
+   - Builds the main app with output to `../../dist`
+   - Installs dependencies for the analyzer app in `apps/analyzer`
+   - Builds the analyzer app with output to `../../dist/analyzer`
    - Uploads the `dist` folder as a Pages artifact
 
 2. **deploy** - Deploys to GitHub Pages
@@ -32,8 +40,8 @@ The GitHub Actions workflow that automates the build and deployment process.
    - Deploys the artifact to GitHub Pages
    - Sets the deployment URL in the environment
 
-### 2. `vite.config.js`
-Configures the base path for the application.
+### 2. `apps/matchbuilder/vite.config.js`
+Configures the base path for the main application.
 
 ```javascript
 base: '/SZMatchBuilder/'
@@ -41,18 +49,34 @@ base: '/SZMatchBuilder/'
 
 This ensures all assets are loaded correctly when the app is served from the `/SZMatchBuilder/` subdirectory on GitHub Pages.
 
-### 3. `package.json`
-Contains the build scripts and dependencies.
+### 3. Root `package.json`
+Contains the workspace configuration and monorepo build scripts.
+
+**Workspaces:**
+- `apps/matchbuilder`
+- `apps/analyzer`
+
+**Key Scripts:**
+- `build` - Builds the main matchbuilder app
+- `build:analyzer` - Builds the analyzer app
+- `build:all` - Builds both applications
+- `dev` - Runs the main app in development mode
+- `dev:analyzer` - Runs the analyzer app in development mode
+- `predeploy` - Runs before deploy (calls build:all)
+- `deploy` - Deploys to gh-pages (for manual deployment)
+
+### 4. `apps/matchbuilder/package.json`
+Contains the main app dependencies and build scripts.
 
 **Key Scripts:**
 - `build` - Builds the application using Vite
-- `predeploy` - Runs before deploy (calls build)
-- `deploy` - Deploys to gh-pages (for manual deployment)
+- `dev` - Runs development server
+- `preview` - Preview the built app
 
 **Key Dependencies:**
-- `gh-pages` - For manual deployment (optional, as we use GitHub Actions)
 - `vite` - Build tool
 - React and related dependencies
+- Tailwind CSS and related tools
 
 ## GitHub Repository Settings
 
@@ -65,11 +89,12 @@ To complete the deployment setup, ensure the following settings are configured i
 ## Deployment Process
 
 ### Automatic Deployment
-1. Push changes to `main` or `Development` branch
+1. Push changes to `main` or `dev-branch` branch
 2. GitHub Actions workflow automatically triggers
-3. Application is built
+3. Both applications are built
 4. Built files are deployed to GitHub Pages
-5. Site is updated at `https://ge0m.github.io/SZMatchBuilder/`
+   - Main app: `https://ge0m.github.io/SZMatchBuilder/`
+   - Analyzer app: `https://ge0m.github.io/SZMatchBuilder/analyzer/`
 
 ### Manual Deployment via GitHub UI
 1. Go to the **Actions** tab in the repository
@@ -78,29 +103,49 @@ To complete the deployment setup, ensure the following settings are configured i
 4. Select the branch to deploy from
 5. Click **Run workflow** button
 
+### Local Development
+To work with the main matchbuilder app:
+
+```bash
+npm install  # Install workspace dependencies
+npm run dev  # Start main app development server
+```
+
+To work with the analyzer app:
+
+```bash
+npm run dev:analyzer  # Start analyzer development server
+```
+
 ### Local Testing
 To test the build locally:
 
 ```bash
 npm install
-npm run build
-npm run preview
+npm run build:all  # Build both apps
 ```
 
-The preview server will show how the app will look when deployed.
+You can then serve the `dist` directory to test how both apps will work when deployed.
 
 ## Troubleshooting
 
 ### Common Issues
 
 **Issue: Assets not loading (404 errors)**
-- Verify `base: '/SZMatchBuilder/'` is set in `vite.config.js`
+- Verify `base: '/SZMatchBuilder/'` is set in `apps/matchbuilder/vite.config.js`
 - Check that the repository name matches the base path
+- For the analyzer app, ensure the build output is correctly set to `../../dist/analyzer`
 
 **Issue: Workflow fails on build**
-- Check Node.js version compatibility
-- Ensure all dependencies are in `package.json`
+- Check Node.js version compatibility (now using Node 20)
+- Ensure all dependencies are in respective app `package.json` files
 - Review build logs in Actions tab
+- Verify working directory paths in workflow are correct
+
+**Issue: One app works but the other doesn't**
+- Check that both build steps completed successfully
+- Verify output directories are correct (`../../dist` for main app, `../../dist/analyzer` for analyzer)
+- Ensure both apps have their dependencies installed separately
 
 **Issue: Pages not updating**
 - Check if workflow completed successfully
@@ -109,11 +154,14 @@ The preview server will show how the app will look when deployed.
 
 ## Files Modified/Created
 
-1. `.github/workflows/deploy.yml` - Created
-2. `README.md` - Updated with deployment documentation
+1. `.github/workflows/deploy.yml` - Updated for monorepo structure
+2. `package.json` - Updated to workspace configuration
+3. `apps/matchbuilder/` - New location for main app files
+4. `DEPLOYMENT.md` - Updated for monorepo documentation
 
 ## Repository URLs
 
 - **Repository**: https://github.com/Ge0m/SZMatchBuilder
-- **GitHub Pages**: https://ge0m.github.io/SZMatchBuilder/
+- **Main App**: https://ge0m.github.io/SZMatchBuilder/
+- **Analyzer App**: https://ge0m.github.io/SZMatchBuilder/analyzer/
 - **Workflow Runs**: https://github.com/Ge0m/SZMatchBuilder/actions
