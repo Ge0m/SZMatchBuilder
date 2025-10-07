@@ -15,13 +15,17 @@ import {
   Database,
   TrendingUp,
   Eye,
-  Star
+  Star,
+  Settings,
+  Package
 } from 'lucide-react';
 
 // Dynamically import all JSON files in BR_Data
 const dataFiles = import.meta.glob('../BR_Data/*.json', { eager: true });
 // Import characters.csv for key-to-name mapping
 import charactersCSV from '../referencedata/characters.csv?raw';
+// Import capsules.csv for equipment analysis
+import capsulesCSV from '../referencedata/capsules.csv?raw';
 
 // Helper functions for styling and data visualization
 function getPerformanceLevel(value, max) {
@@ -38,9 +42,10 @@ function formatNumber(num) {
   return num.toString();
 }
 
-function StatBar({ value, maxValue, type = 'damage', isInverse = false, label = '', icon: Icon = Target }) {
+function StatBar({ value, maxValue, displayValue, type = 'damage', isInverse = false, label = '', icon: Icon = Target }) {
   const percentage = Math.min((value / maxValue) * 100, 100);
   const displayPercentage = isInverse ? 100 - percentage : percentage;
+  const actualDisplayValue = displayValue !== undefined ? displayValue : value;
   
   const getColorClass = () => {
     switch (type) {
@@ -49,6 +54,7 @@ function StatBar({ value, maxValue, type = 'damage', isInverse = false, label = 
       case 'special': return 'bg-purple-500';
       case 'ultimate': return 'bg-orange-500';
       case 'taken': return 'bg-blue-500';
+      case 'time': return 'bg-orange-500';
       default: return 'bg-gray-500';
     }
   };
@@ -60,8 +66,7 @@ function StatBar({ value, maxValue, type = 'damage', isInverse = false, label = 
         <span className="text-sm text-gray-600">{label}</span>
       </div>
       <div className="flex items-center justify-between mb-2">
-        <span className="text-lg font-bold text-gray-800">{formatNumber(value)}</span>
-        <span className="text-xs text-gray-500">{displayPercentage.toFixed(1)}%</span>
+        <span className="text-lg font-bold text-gray-800">{formatNumber(actualDisplayValue)}</span>
       </div>
       <div className="w-full bg-gray-200 rounded-full h-2">
         <div 
@@ -71,6 +76,38 @@ function StatBar({ value, maxValue, type = 'damage', isInverse = false, label = 
       </div>
     </div>
   );
+}
+
+// Parse capsules CSV data
+function parseCapsules(csvText) {
+  const lines = csvText.trim().split('\n');
+  const headers = lines[0].split(',');
+  const capsules = {};
+  const aiStrategies = {};
+  
+  for (let i = 1; i < lines.length; i++) {
+    const values = lines[i].split(',');
+    const item = {
+      name: values[0]?.trim(),
+      id: values[1]?.trim(),
+      type: values[2]?.trim(),
+      exclusiveTo: values[3]?.trim(),
+      cost: parseInt(values[4]) || 0,
+      effect: values[5]?.trim()
+    };
+    
+    if (item.id) {
+      // Only include actual gameplay capsules and AI strategies
+      if (item.type === 'Capsule') {
+        capsules[item.id] = item;
+      } else if (item.type === 'AI') {
+        aiStrategies[item.id] = item;
+      }
+      // Skip Costume and Sparking BGM as they are cosmetic
+    }
+  }
+  
+  return { capsules, aiStrategies };
 }
 
 function PerformanceIndicator({ value, allValues, type = 'damage', isInverse = false }) {
@@ -146,7 +183,7 @@ function getTeams(characterRecord) {
   };
 }
 
-function extractStats(char, charMap) {
+function extractStats(char, charMap, capsuleMap = {}) {
   const play = char.battlePlayCharacter || {};
   const count = char.battleCount || {};
   const numCount = count.battleNumCount || {};
@@ -162,21 +199,326 @@ function extractStats(char, charMap) {
     formNames = forms.map(f => charMap[f] || f).join(', ');
   }
   
+  // Equipment analysis
+  const equipItems = play.equipItem || [];
+  const equippedCapsules = equipItems
+    .map(item => item.key)
+    .filter(Boolean)
+    .filter(key => capsuleMap[key]) // Only include items that exist in our filtered capsuleMap
+    .map(key => ({
+      id: key,
+      capsule: capsuleMap[key]
+    }));
+  
+  const totalCapsuleCost = equippedCapsules.reduce((sum, item) => sum + (item.capsule.cost || 0), 0);
+  
+  // Categorize capsules by type
+  const capsuleTypes = {
+    damage: equippedCapsules.filter(item => 
+      item.capsule.name?.toLowerCase().includes('attack') || 
+      item.capsule.name?.toLowerCase().includes('damage') ||
+      item.capsule.name?.toLowerCase().includes('blast')
+    ).length,
+    defensive: equippedCapsules.filter(item => 
+      item.capsule.name?.toLowerCase().includes('guard') || 
+      item.capsule.name?.toLowerCase().includes('defense') ||
+      item.capsule.name?.toLowerCase().includes('body') ||
+      item.capsule.name?.toLowerCase().includes('training')
+    ).length,
+    utility: equippedCapsules.filter(item => 
+      item.capsule.name?.toLowerCase().includes('ki') || 
+      item.capsule.name?.toLowerCase().includes('movement') ||
+      item.capsule.name?.toLowerCase().includes('dash') ||
+      item.capsule.name?.toLowerCase().includes('transformation')
+    ).length
+  };
+  
   return {
     name,
     damageDone: count.givenDamage || 0,
     damageTaken: count.takenDamage || 0,
+    battleTime: parseBattleTime(count.battleTime) || 0,
     hPGaugeValue: play.hPGaugeValue || 0,
     hPGaugeValueMax: play.hPGaugeValueMax || 40000,
     specialMovesUsed: numCount.sPMCount || 0,
     ultimatesUsed: numCount.uLTCount || 0,
     skillsUsed: numCount.eXACount || 0,
     kills: count.killCount || 0,
-    formChangeHistory: formNames
+    formChangeHistory: formNames,
+    // Equipment data
+    equippedCapsules,
+    totalCapsuleCost,
+    capsuleTypes,
+    buildArchetype: getBuildArchetype(capsuleTypes, totalCapsuleCost)
   };
 }
 
-function getAggregatedCharacterData(files, charMap) {
+// Helper function to parse battle time format "+00000000.00:02:54.470000000" to seconds
+function parseBattleTime(timeString) {
+  if (!timeString || typeof timeString !== 'string') return 0;
+  
+  // Format: "+00000000.00:02:54.470000000"
+  // Extract the time part after the first colon
+  const timeMatch = timeString.match(/(\d{2}):(\d{2}):(\d{2})\.(\d+)/);
+  if (!timeMatch) return 0;
+  
+  const hours = parseInt(timeMatch[1], 10);
+  const minutes = parseInt(timeMatch[2], 10);
+  const seconds = parseInt(timeMatch[3], 10);
+  const milliseconds = parseInt(timeMatch[4].substring(0, 3), 10); // Take first 3 digits for milliseconds
+  
+  return hours * 3600 + minutes * 60 + seconds + milliseconds / 1000;
+}
+
+// Helper function to format seconds back to readable time
+function formatBattleTime(seconds) {
+  if (!seconds || seconds === 0) return '0:00';
+  
+  const mins = Math.floor(seconds / 60);
+  const secs = Math.floor(seconds % 60);
+  return `${mins}:${secs.toString().padStart(2, '0')}`;
+}
+
+// Component to show battle time variance from average
+function BattleTimeVariance({ value, averageValue }) {
+  const variance = value - averageValue;
+  const isAbove = variance > 0;
+  const absVariance = Math.abs(variance);
+  
+  if (Math.abs(variance) < 1) {
+    return (
+      <div className="bg-gray-50 p-3 rounded-lg">
+        <div className="flex items-center gap-2 mb-2">
+          <Clock className="w-4 h-4 text-gray-600" />
+          <span className="text-sm text-gray-600">Battle Time</span>
+        </div>
+        <div className="flex items-center justify-between">
+          <span className="text-lg font-bold text-gray-800">{formatBattleTime(value)}</span>
+          <span className="text-xs text-gray-500">~Average</span>
+        </div>
+      </div>
+    );
+  }
+  
+  return (
+    <div className="bg-gray-50 p-3 rounded-lg">
+      <div className="flex items-center gap-2 mb-2">
+        <Clock className="w-4 h-4 text-gray-600" />
+        <span className="text-sm text-gray-600">Battle Time</span>
+      </div>
+      <div className="flex items-center justify-between">
+        <span className="text-lg font-bold text-gray-800">{formatBattleTime(value)}</span>
+        <span className={`text-xs font-medium ${isAbove ? 'text-blue-600' : 'text-red-600'}`}>
+          {isAbove ? '+' : '-'}{formatBattleTime(absVariance)} {isAbove ? 'longer' : 'shorter'}
+        </span>
+      </div>
+    </div>
+  );
+}
+
+// Determine build archetype based on equipped capsules
+function getBuildArchetype(capsuleTypes, totalCost) {
+  const { damage, defensive, utility } = capsuleTypes;
+  const total = damage + defensive + utility;
+  
+  if (total === 0) return 'No Build';
+  
+  if (damage >= defensive && damage >= utility) {
+    return 'Aggressive';
+  } else if (defensive >= damage && defensive >= utility) {
+    return 'Defensive';
+  } else if (utility >= damage && utility >= defensive) {
+    return 'Technical';
+  } else {
+    return 'Hybrid';
+  }
+}
+
+// Component to display character build information
+function BuildDisplay({ stats, showDetailed = false }) {
+  if (!stats.equippedCapsules || stats.equippedCapsules.length === 0) {
+    return (
+      <div className="bg-gray-50 p-3 rounded-lg">
+        <div className="flex items-center gap-2 mb-2">
+          <Package className="w-4 h-4 text-gray-400" />
+          <span className="text-sm text-gray-500">No Equipment Data</span>
+        </div>
+      </div>
+    );
+  }
+
+  const getBuildColor = (archetype) => {
+    if (archetype.includes('Aggressive')) return 'text-red-600 bg-red-50 border-red-200';
+    if (archetype.includes('Defensive')) return 'text-green-600 bg-green-50 border-green-200';
+    if (archetype.includes('Technical')) return 'text-blue-600 bg-blue-50 border-blue-200';
+    if (archetype.includes('Hybrid')) return 'text-purple-600 bg-purple-50 border-purple-200';
+    return 'text-gray-600 bg-gray-50 border-gray-200';
+  };
+
+  return (
+    <div className="bg-gray-50 p-3 rounded-lg">
+      <div className="flex items-center justify-between mb-2">
+        <div className="flex items-center gap-2">
+          <Settings className="w-4 h-4 text-gray-600" />
+          <span className="text-sm text-gray-600">Build</span>
+        </div>
+      </div>
+      
+      <div className={`inline-block px-2 py-1 rounded text-xs font-medium border ${getBuildColor(stats.buildArchetype)}`}>
+        {stats.buildArchetype}
+      </div>
+      
+      {showDetailed && (
+        <div className="mt-2 space-y-1">
+          <div className="flex justify-between text-xs">
+            <span className="text-gray-500">Damage Capsules:</span>
+            <span className="font-medium">{stats.capsuleTypes.damage}</span>
+          </div>
+          <div className="flex justify-between text-xs">
+            <span className="text-gray-500">Defensive Capsules:</span>
+            <span className="font-medium">{stats.capsuleTypes.defensive}</span>
+          </div>
+          <div className="flex justify-between text-xs">
+            <span className="text-gray-500">Utility Capsules:</span>
+            <span className="font-medium">{stats.capsuleTypes.utility}</span>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Meta Analysis Component
+function MetaAnalysisContent({ aggregatedData, capsuleMap, aiStrategies }) {
+  console.log('MetaAnalysisContent received:', { aggregatedDataLength: aggregatedData.length, aggregatedData });
+  
+  // Analyze build archetypes
+  const buildArchetypes = {};
+  const capsuleUsage = {};
+  
+  aggregatedData.forEach(char => {
+    if (char.matches && char.matches.length > 0) {
+      char.matches.forEach(match => {
+        const archetype = match.buildArchetype || 'Unknown';
+        if (!buildArchetypes[archetype]) {
+          buildArchetypes[archetype] = { total: 0, totalDamage: 0, totalSurvival: 0 };
+        }
+        buildArchetypes[archetype].total++;
+        buildArchetypes[archetype].totalDamage += match.damageDone;
+        buildArchetypes[archetype].totalSurvival += (match.hPGaugeValue / match.hPGaugeValueMax) * 100;
+        
+        // Count capsule usage
+        if (match.equippedCapsules) {
+          match.equippedCapsules.forEach(capsule => {
+            const capsuleId = capsule.id;
+            if (!capsuleUsage[capsuleId]) {
+              capsuleUsage[capsuleId] = { 
+                name: capsule.capsule.name || capsuleId, 
+                usage: 0, 
+                characters: new Set()
+              };
+            }
+            capsuleUsage[capsuleId].usage++;
+            capsuleUsage[capsuleId].characters.add(char.name);
+          });
+        }
+      });
+    }
+  });
+
+  // Sort by usage
+  const topCapsules = Object.entries(capsuleUsage)
+    .map(([id, data]) => ({ id, ...data, characterCount: data.characters.size }))
+    .sort((a, b) => b.usage - a.usage)
+    .slice(0, 10);
+
+  const archetypeStats = Object.entries(buildArchetypes)
+    .map(([name, stats]) => ({
+      name,
+      usage: stats.total,
+      avgDamage: stats.total > 0 ? stats.totalDamage / stats.total : 0,
+      avgSurvival: stats.total > 0 ? stats.totalSurvival / stats.total : 0
+    }))
+    .sort((a, b) => b.usage - a.usage);
+
+  console.log('Processed data:', { archetypeStats, topCapsules });
+
+  if (aggregatedData.length === 0) {
+    return (
+      <div className="text-center py-8">
+        <Database className="w-16 h-16 text-gray-400 mx-auto mb-4" />
+        <h3 className="text-lg font-medium text-gray-600 mb-2">No Data Available</h3>
+        <p className="text-gray-500">Please ensure you have match data loaded to view meta analysis.</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-6">
+      {/* Build Archetypes */}
+      <div>
+        <h3 className="text-lg font-semibold text-gray-800 mb-4 flex items-center gap-2">
+          <TrendingUp className="w-5 h-5" />
+          Build Archetype Popularity
+        </h3>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          {archetypeStats.map((archetype, i) => (
+            <div key={archetype.name} className="bg-gray-50 p-4 rounded-lg">
+              <div className="flex items-center justify-between mb-2">
+                <h4 className="font-medium text-gray-800">{archetype.name}</h4>
+                <span className="text-sm text-gray-500">#{i + 1}</span>
+              </div>
+              <div className="space-y-1 text-sm">
+                <div className="flex justify-between">
+                  <span className="text-gray-600">Usage:</span>
+                  <span className="font-medium">{archetype.usage} matches</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-gray-600">Avg Damage:</span>
+                  <span className="font-medium">{formatNumber(Math.round(archetype.avgDamage))}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-gray-600">Avg Survival:</span>
+                  <span className="font-medium">{archetype.avgSurvival.toFixed(1)}%</span>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Top Capsules */}
+      <div>
+        <h3 className="text-lg font-semibold text-gray-800 mb-4 flex items-center gap-2">
+          <Package className="w-5 h-5" />
+          Most Popular Capsules
+        </h3>
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          {topCapsules.map((capsule, i) => (
+            <div key={capsule.id} className="bg-gray-50 p-4 rounded-lg">
+              <div className="flex items-center justify-between mb-2">
+                <h4 className="font-medium text-gray-800 truncate">{capsule.name}</h4>
+                <span className="text-sm text-gray-500">#{i + 1}</span>
+              </div>
+              <div className="space-y-1 text-sm">
+                <div className="flex justify-between">
+                  <span className="text-gray-600">Usage:</span>
+                  <span className="font-medium">{capsule.usage} times</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-gray-600">Characters:</span>
+                  <span className="font-medium">{capsule.characterCount} different</span>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function getAggregatedCharacterData(files, charMap, capsuleMap = {}) {
   const characterStats = {};
   
   files.forEach(file => {
@@ -194,7 +536,7 @@ function getAggregatedCharacterData(files, charMap) {
     if (!characterRecord) return;
     
     Object.values(characterRecord).forEach(char => {
-      const stats = extractStats(char, charMap);
+      const stats = extractStats(char, charMap, capsuleMap);
       if (!stats.name || stats.name === '-') return;
       
       // Use original form name as the key for aggregation
@@ -207,13 +549,16 @@ function getAggregatedCharacterData(files, charMap) {
           totalDamage: 0,
           totalTaken: 0,
           totalHealth: 0,
+          totalBattleTime: 0,
+          totalHPGaugeValueMax: 0,
           totalSpecial: 0,
           totalUltimates: 0,
           totalSkills: 0,
           totalKills: 0,
           matchCount: 0,
           allFormsUsed: new Set(), // Track all forms used across matches
-          formStats: {} // Track per-form aggregated stats
+          formStats: {}, // Track per-form aggregated stats
+          matches: [] // Track individual match data for meta analysis
         };
       }
       
@@ -221,11 +566,26 @@ function getAggregatedCharacterData(files, charMap) {
       charData.totalDamage += stats.damageDone;
       charData.totalTaken += stats.damageTaken;
       charData.totalHealth += stats.hPGaugeValue;
+      charData.totalBattleTime += stats.battleTime;
+      charData.totalHPGaugeValueMax += stats.hPGaugeValueMax;
       charData.totalSpecial += stats.specialMovesUsed;
       charData.totalUltimates += stats.ultimatesUsed;
       charData.totalSkills += stats.skillsUsed;
       charData.totalKills += stats.kills;
       charData.matchCount += 1;
+      
+      // Add individual match data for meta analysis
+      charData.matches.push({
+        damageDone: stats.damageDone,
+        damageTaken: stats.damageTaken,
+        battleTime: stats.battleTime,
+        hPGaugeValue: stats.hPGaugeValue,
+        hPGaugeValueMax: stats.hPGaugeValueMax,
+        buildArchetype: stats.buildArchetype,
+        totalCapsuleCost: stats.totalCapsuleCost,
+        capsuleTypes: stats.capsuleTypes,
+        equippedCapsules: stats.equippedCapsules
+      });
       
       // Track all forms used
       if (originalForm) {
@@ -255,6 +615,7 @@ function getAggregatedCharacterData(files, charMap) {
                 totalDamage: 0,
                 totalTaken: 0,
                 totalHealth: 0,
+                totalBattleTime: 0,
                 totalSpecial: 0,
                 totalUltimates: 0,
                 totalSkills: 0,
@@ -270,6 +631,7 @@ function getAggregatedCharacterData(files, charMap) {
             formData.totalDamage += formCount.givenDamage || 0;
             formData.totalTaken += formCount.takenDamage || 0;
             formData.totalHealth += formCount.hPGaugeValue || 0;
+            formData.totalBattleTime += parseBattleTime(formCount.battleTime) || 0;
             formData.totalSpecial += formNumCount.sPMCount || 0;
             formData.totalUltimates += formNumCount.uLTCount || 0;
             formData.totalSkills += formNumCount.eXACount || 0;
@@ -293,6 +655,7 @@ function getAggregatedCharacterData(files, charMap) {
       avgDamage: Math.round(formStat.totalDamage / formStat.matchCount),
       avgTaken: Math.round(formStat.totalTaken / formStat.matchCount),
       avgHealth: Math.round(formStat.totalHealth / formStat.matchCount),
+      avgBattleTime: Math.round((formStat.totalBattleTime / formStat.matchCount) * 10) / 10,
       avgSpecial: Math.round((formStat.totalSpecial / formStat.matchCount) * 10) / 10,
       avgUltimates: Math.round((formStat.totalUltimates / formStat.matchCount) * 10) / 10,
       avgSkills: Math.round((formStat.totalSkills / formStat.matchCount) * 10) / 10,
@@ -307,6 +670,8 @@ function getAggregatedCharacterData(files, charMap) {
       avgDamage: Math.round(char.totalDamage / char.matchCount),
       avgTaken: Math.round(char.totalTaken / char.matchCount),
       avgHealth: Math.round(char.totalHealth / char.matchCount),
+      avgBattleTime: Math.round((char.totalBattleTime / char.matchCount) * 10) / 10,
+      avgHPGaugeValueMax: Math.round(char.totalHPGaugeValueMax / char.matchCount),
       avgSpecial: Math.round((char.totalSpecial / char.matchCount) * 10) / 10,
       avgUltimates: Math.round((char.totalUltimates / char.matchCount) * 10) / 10,
       avgSkills: Math.round((char.totalSkills / char.matchCount) * 10) / 10,
@@ -315,18 +680,19 @@ function getAggregatedCharacterData(files, charMap) {
   }).sort((a, b) => b.totalDamage - a.totalDamage);
 }
 
-function getTeamStats(teamRecords, charMap) {
-  let totalDamage = 0, totalTaken = 0, totalHealth = 0, totalSpecial = 0, totalUltimates = 0, totalSkills = 0;
+function getTeamStats(teamRecords, charMap, capsuleMap = {}) {
+  let totalDamage = 0, totalTaken = 0, totalHealth = 0, totalHPGaugeValueMax = 0, totalSpecial = 0, totalUltimates = 0, totalSkills = 0;
   teamRecords.forEach(char => {
-    const stats = extractStats(char, charMap);
+    const stats = extractStats(char, charMap, capsuleMap);
     totalDamage += stats.damageDone;
     totalTaken += stats.damageTaken;
     totalHealth += stats.hPGaugeValue;
+    totalHPGaugeValueMax += stats.hPGaugeValueMax;
     totalSpecial += stats.specialMovesUsed;
     totalUltimates += stats.ultimatesUsed;
     totalSkills += stats.skillsUsed;
   });
-  return { totalDamage, totalTaken, totalHealth, totalSpecial, totalUltimates, totalSkills };
+  return { totalDamage, totalTaken, totalHealth, totalHPGaugeValueMax, totalSpecial, totalUltimates, totalSkills };
 }
 
 export default function App() {
@@ -338,21 +704,22 @@ export default function App() {
   const [expandedRows, setExpandedRows] = useState({}); // Expanded state for character rows
 
   const charMap = useMemo(() => parseCharacterCSV(charactersCSV), []);
+  const { capsules: capsuleMap, aiStrategies } = useMemo(() => parseCapsules(capsulesCSV), []);
   const fileNames = Object.keys(dataFiles).map((path) => path.split('/').pop());
 
   // Aggregated data for reference mode
   const aggregatedData = useMemo(() => {
-    if (mode === 'reference' && viewType === 'aggregated') {
+    if (mode === 'reference' && (viewType === 'aggregated' || viewType === 'meta')) {
       const allFiles = fileNames.map(fileName => {
         const fullPath = Object.keys(dataFiles).find((p) => p.endsWith(fileName));
         return fullPath ? { name: fileName, content: dataFiles[fullPath] } : { name: fileName, error: 'Not found' };
       });
-      return getAggregatedCharacterData(allFiles, charMap);
-    } else if (mode === 'manual' && manualFiles.length > 1) {
-      return getAggregatedCharacterData(manualFiles, charMap);
+      return getAggregatedCharacterData(allFiles, charMap, capsuleMap);
+    } else if (mode === 'manual' && (viewType === 'aggregated' || viewType === 'meta') && manualFiles.length > 1) {
+      return getAggregatedCharacterData(manualFiles, charMap, capsuleMap);
     }
     return [];
-  }, [mode, viewType, charMap, manualFiles]);
+  }, [mode, viewType, charMap, capsuleMap, manualFiles]);
 
   // Helper to toggle expanded state
   const toggleRow = (teamType, idx) => {
@@ -431,8 +798,8 @@ export default function App() {
     p2Team = teams.p2;
   }
 
-  const p1Summary = getTeamStats(p1Team, charMap);
-  const p2Summary = getTeamStats(p2Team, charMap);
+  const p1Summary = getTeamStats(p1Team, charMap, capsuleMap);
+  const p2Summary = getTeamStats(p2Team, charMap, capsuleMap);
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-orange-500 via-red-600 to-purple-700 p-4">
@@ -544,6 +911,26 @@ export default function App() {
                     />
                     <span className="font-semibold">Aggregated Character Stats</span>
                     <p className="text-sm opacity-75">Combined data across matches</p>
+                  </div>
+                </div>
+              </label>
+              <label className={`p-4 rounded-xl border-2 cursor-pointer transition-all ${
+                viewType === 'meta' 
+                  ? 'border-purple-500 bg-purple-50 text-purple-700' 
+                  : 'border-gray-200 bg-gray-50 hover:border-gray-300'
+              }`}>
+                <div className="flex items-center gap-3">
+                  <Database className="w-6 h-6" />
+                  <div>
+                    <input 
+                      type="radio" 
+                      value="meta" 
+                      checked={viewType === 'meta'} 
+                      onChange={(e) => setViewType(e.target.value)}
+                      className="sr-only"
+                    />
+                    <span className="font-semibold">Build Meta Analysis</span>
+                    <p className="text-sm opacity-75">Capsule effectiveness and build trends</p>
                   </div>
                 </div>
               </label>
@@ -661,69 +1048,106 @@ export default function App() {
                 const allAvgDamageValues = aggregatedData.map(c => c.avgDamage);
                 const allAvgTakenValues = aggregatedData.map(c => c.avgTaken);
                 const allAvgHealthValues = aggregatedData.map(c => c.avgHealth);
+                const allAvgBattleTimeValues = aggregatedData.map(c => c.avgBattleTime);
+                const avgBattleTime = allAvgBattleTimeValues.reduce((sum, val) => sum + val, 0) / allAvgBattleTimeValues.length;
+                
+                // Calculate composite combat performance scores for ranking
+                const combatPerformanceScores = aggregatedData.map(c => {
+                  const damageScore = c.avgDamage;
+                  const damageEfficiency = c.avgDamage / Math.max(c.avgTaken, 1);
+                  const damageOverTime = c.avgDamage / c.avgBattleTime;
+                  // Combine scores (weighted average) - increased efficiency weight
+                  return damageScore * 0.3 + damageEfficiency * 15000 * 0.4 + damageOverTime * 100 * 0.3;
+                });
+                const currentCombatScore = char.avgDamage * 0.3 + (char.avgDamage / Math.max(char.avgTaken, 1)) * 15000 * 0.4 + (char.avgDamage / char.avgBattleTime) * 100 * 0.3;
                 
                 return (
                   <div key={i} className="bg-gray-50 rounded-xl p-6 border border-gray-200 hover:border-gray-300 transition-colors">
-                    <div className="grid grid-cols-1 lg:grid-cols-6 gap-4 items-center">
-                      <div className="lg:col-span-2">
-                        <div className="flex items-center gap-3 mb-2">
+                    <div className="space-y-4">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-3">
                           <Swords className="w-6 h-6 text-orange-600" />
                           <h3 className="text-lg font-bold text-gray-800">{char.name}</h3>
-                          <PerformanceIndicator value={char.totalDamage} allValues={allDamageValues} />
+                          <PerformanceIndicator value={currentCombatScore} allValues={combatPerformanceScores} />
                         </div>
-                        <div className="flex items-center gap-2 text-sm text-gray-600">
-                          <BarChart3 className="w-4 h-4" />
-                          <span>{char.matchCount} matches played</span>
-                        </div>
-                        {char.formHistory && (
-                          <div className="text-xs text-gray-500 mt-1">
-                            Forms: {char.formHistory}
+                        <div className="flex items-center gap-4">
+                          <div className="flex items-center gap-2 text-sm text-gray-600">
+                            <BarChart3 className="w-4 h-4" />
+                            <span>{char.matchCount} matches played</span>
                           </div>
-                        )}
+                          <button 
+                            onClick={() => toggleRow('agg', i)} 
+                            className="w-8 h-8 bg-blue-100 hover:bg-blue-200 text-blue-600 rounded-full flex items-center justify-center transition-colors"
+                            title="View detailed stats"
+                          >
+                            {expanded ? '−' : '+'}
+                          </button>
+                        </div>
                       </div>
                       
-                      <StatBar 
-                        value={char.totalDamage} 
-                        maxValue={Math.max(...allDamageValues)} 
-                        type="damage" 
-                        label="Total Damage"
-                        icon={Target}
-                      />
-                      
-                      <StatBar 
-                        value={char.avgDamage} 
-                        maxValue={Math.max(...allAvgDamageValues)} 
-                        type="damage" 
-                        label="Avg Damage"
-                        icon={Zap}
-                      />
-                      
-                      <StatBar 
-                        value={char.avgHealth} 
-                        maxValue={40000}
-                        type="health" 
-                        label="Avg HP Left"
-                        icon={Heart}
-                      />
-                      
-                      <div className="flex items-center justify-between">
-                        <div className="text-center">
-                          <div className="text-2xl font-bold text-orange-600">{char.totalKills}</div>
-                          <div className="text-xs text-gray-600">Eliminations</div>
+                      {char.formHistory && (
+                        <div className="text-xs text-gray-500">
+                          Forms: {char.formHistory}
                         </div>
-                        <button 
-                          onClick={() => toggleRow('agg', i)} 
-                          className="w-8 h-8 bg-blue-100 hover:bg-blue-200 text-blue-600 rounded-full flex items-center justify-center transition-colors"
-                          title="View detailed stats"
-                        >
-                          {expanded ? '−' : '+'}
-                        </button>
+                      )}
+                      
+                      <div className="flex gap-3">
+                        <div className="flex-1">
+                          <StatBar 
+                            value={char.avgDamage} 
+                            maxValue={Math.max(...allAvgDamageValues)} 
+                            type="damage" 
+                            label="Avg Damage"
+                            icon={Zap}
+                          />
+                        </div>
+                        
+                        <div className="flex-1">
+                          <StatBar 
+                            value={char.avgDamage / char.avgBattleTime} 
+                            maxValue={Math.max(...aggregatedData.map(c => c.avgDamage / c.avgBattleTime))} 
+                            displayValue={Math.round(char.avgDamage / char.avgBattleTime)}
+                            type="special" 
+                            label="Damage/Sec"
+                            icon={Target}
+                          />
+                        </div>
+                        
+                        <div className="flex-1">
+                          <StatBar 
+                            value={char.avgDamage / Math.max(char.avgTaken, 1)} 
+                            maxValue={Math.max(...aggregatedData.map(c => c.avgDamage / Math.max(c.avgTaken, 1)))} 
+                            displayValue={(char.avgDamage / Math.max(char.avgTaken, 1)).toFixed(2) + 'x'}
+                            type="ultimate" 
+                            label="Efficiency"
+                            icon={TrendingUp}
+                          />
+                        </div>
+                        
+                        <div className="flex-1">
+                          <BattleTimeVariance 
+                            value={char.avgBattleTime}
+                            averageValue={avgBattleTime}
+                          />
+                        </div>
+                        
+                        <div className="flex-1">
+                          <div className="bg-gray-50 p-3 rounded-lg">
+                            <div className="flex items-center gap-2 mb-2">
+                              <Trophy className="w-4 h-4 text-gray-600" />
+                              <span className="text-sm text-gray-600">Eliminations</span>
+                            </div>
+                            <div className="flex items-center justify-between">
+                              <span className="text-lg font-bold text-yellow-500">{char.totalKills}</span>
+                            </div>
+                          </div>
+                        </div>
                       </div>
                     </div>
                     
                     {expanded && (
                       <div className="mt-6 pt-6 border-t border-gray-200">
-                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                           
                           {/* Combat Performance */}
                           <div className="bg-white rounded-lg p-4">
@@ -733,88 +1157,97 @@ export default function App() {
                             </div>
                             <div className="space-y-3 text-sm">
                               <div className="flex justify-between">
-                                <span className="text-gray-600">Total Damage Dealt:</span>
+                                <span className="text-gray-600">Avg Damage per Match:</span>
                                 <div className="flex items-center gap-2">
-                                  <strong>{char.totalDamage.toLocaleString()}</strong>
-                                  <PerformanceIndicator value={char.totalDamage} allValues={allDamageValues} />
+                                  <strong>{char.avgDamage.toLocaleString()}</strong>
+                                  <PerformanceIndicator value={char.avgDamage} allValues={allAvgDamageValues} />
                                 </div>
                               </div>
                               <div className="flex justify-between">
-                                <span className="text-gray-600">Avg Damage per Match:</span>
-                                <strong>{char.avgDamage.toLocaleString()}</strong>
+                                <span className="text-gray-600">Avg Damage Taken:</span>
+                                <div className="flex items-center gap-2">
+                                  <strong>{char.avgTaken.toLocaleString()}</strong>
+                                  <PerformanceIndicator value={char.avgTaken} allValues={allAvgTakenValues} isInverse={true} />
+                                </div>
                               </div>
                               <div className="flex justify-between">
-                                <span className="text-gray-600">Total Damage Taken:</span>
+                                <span className="text-gray-600">Damage Over Time:</span>
                                 <div className="flex items-center gap-2">
-                                  <strong>{char.totalTaken.toLocaleString()}</strong>
-                                  <PerformanceIndicator value={char.totalTaken} allValues={allDamageTakenValues} isInverse={true} />
+                                  <strong>{Math.round(char.avgDamage / char.avgBattleTime).toLocaleString()}/sec</strong>
+                                  <PerformanceIndicator value={char.avgDamage / char.avgBattleTime} allValues={aggregatedData.map(c => c.avgDamage / c.avgBattleTime)} />
                                 </div>
                               </div>
                               <div className="flex justify-between">
                                 <span className="text-gray-600">Damage Efficiency:</span>
-                                <strong>{(char.totalDamage / Math.max(char.totalTaken, 1)).toFixed(2)}x</strong>
+                                <div className="flex items-center gap-2">
+                                  <strong>{(char.avgDamage / Math.max(char.avgTaken, 1)).toFixed(2)}x</strong>
+                                  <PerformanceIndicator value={char.avgDamage / Math.max(char.avgTaken, 1)} allValues={aggregatedData.map(c => c.avgDamage / Math.max(c.avgTaken, 1))} />
+                                </div>
                               </div>
                             </div>
                           </div>
 
-                          {/* Survival & Health */}
-                          <div className="bg-white rounded-lg p-4">
-                            <div className="flex items-center gap-2 mb-3">
-                              <Heart className="w-5 h-5 text-green-600" />
-                              <h4 className="font-bold text-gray-800">Survival & Health</h4>
+                          {/* Survival & Health and Special Abilities in a nested grid */}
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+                            {/* Survival & Health */}
+                            <div className="bg-white rounded-lg p-4">
+                              <div className="flex items-center gap-2 mb-3">
+                                <Heart className="w-5 h-5 text-green-600" />
+                                <h4 className="font-bold text-gray-800">Survival & Health</h4>
+                              </div>
+                              <div className="space-y-3 text-sm">
+                                <div className="flex justify-between">
+                                  <span className="text-gray-600">Avg HP Remaining:</span>
+                                  <strong>{char.avgHealth.toLocaleString()}</strong>
+                                </div>
+                                <div className="flex justify-between">
+                                  <span className="text-gray-600">Survival Rate:</span>
+                                  <strong>{((char.avgHealth / 40000) * 100).toFixed(1)}%</strong>
+                                </div>
+                                <div className="flex justify-between">
+                                  <span className="text-gray-600">Total Eliminations:</span>
+                                  <strong className="flex items-center gap-1">
+                                    <Trophy className="w-4 h-4 text-yellow-500" />
+                                    {char.totalKills}
+                                  </strong>
+                                </div>
+                                <div className="flex justify-between">
+                                  <span className="text-gray-600">Avg Kills per Match:</span>
+                                  <strong>{char.avgKills}</strong>
+                                </div>
+                              </div>
                             </div>
-                            <div className="space-y-3 text-sm">
-                              <div className="flex justify-between">
-                                <span className="text-gray-600">Avg HP Remaining:</span>
-                                <strong>{char.avgHealth.toLocaleString()}</strong>
-                              </div>
-                              <div className="flex justify-between">
-                                <span className="text-gray-600">Survival Rate:</span>
-                                <strong>{((char.avgHealth / 40000) * 100).toFixed(1)}%</strong>
-                              </div>
-                              <div className="flex justify-between">
-                                <span className="text-gray-600">Total Eliminations:</span>
-                                <strong className="flex items-center gap-1">
-                                  <Trophy className="w-4 h-4 text-yellow-500" />
-                                  {char.totalKills}
-                                </strong>
-                              </div>
-                              <div className="flex justify-between">
-                                <span className="text-gray-600">Avg Kills per Match:</span>
-                                <strong>{char.avgKills}</strong>
-                              </div>
-                            </div>
-                          </div>
 
-                          {/* Special Abilities */}
-                          <div className="bg-white rounded-lg p-4">
-                            <div className="flex items-center gap-2 mb-3">
-                              <Zap className="w-5 h-5 text-purple-600" />
-                              <h4 className="font-bold text-gray-800">Special Abilities</h4>
-                            </div>
-                            <div className="space-y-3 text-sm">
-                              <div className="flex justify-between">
-                                <span className="text-gray-600">Total Blast Skills:</span>
-                                <strong>{char.totalSpecial}</strong>
+                            {/* Special Abilities */}
+                            <div className="bg-white rounded-lg p-4">
+                              <div className="flex items-center gap-2 mb-3">
+                                <Zap className="w-5 h-5 text-purple-600" />
+                                <h4 className="font-bold text-gray-800">Special Abilities</h4>
                               </div>
-                              <div className="flex justify-between">
-                                <span className="text-gray-600">Avg Blasts per Match:</span>
-                                <strong>{char.avgSpecial}</strong>
-                              </div>
-                              <div className="flex justify-between">
-                                <span className="text-gray-600">Total Ultimates:</span>
-                                <strong>{char.totalUltimates}</strong>
-                              </div>
-                              <div className="flex justify-between">
-                                <span className="text-gray-600">Avg Ultimates per Match:</span>
-                                <strong>{char.avgUltimates}</strong>
+                              <div className="space-y-3 text-sm">
+                                <div className="flex justify-between">
+                                  <span className="text-gray-600">Total Blast Skills:</span>
+                                  <strong>{char.totalSpecial}</strong>
+                                </div>
+                                <div className="flex justify-between">
+                                  <span className="text-gray-600">Avg Blasts per Match:</span>
+                                  <strong>{char.avgSpecial}</strong>
+                                </div>
+                                <div className="flex justify-between">
+                                  <span className="text-gray-600">Total Ultimates:</span>
+                                  <strong>{char.totalUltimates}</strong>
+                                </div>
+                                <div className="flex justify-between">
+                                  <span className="text-gray-600">Avg Ultimates per Match:</span>
+                                  <strong>{char.avgUltimates}</strong>
+                                </div>
                               </div>
                             </div>
                           </div>
 
                           {/* Forms & Transformations */}
                           {char.hasMultipleForms && (
-                            <div className="bg-white rounded-lg p-4 lg:col-span-3">
+                            <div className="bg-white rounded-lg p-4 md:col-span-2">
                               <div className="flex items-center gap-2 mb-3">
                                 <Star className="w-5 h-5 text-yellow-600" />
                                 <h4 className="font-bold text-gray-800">Form Breakdown</h4>
@@ -854,6 +1287,24 @@ export default function App() {
                 );
               })}
             </div>
+          </div>
+        )}
+
+        {/* Meta Analysis Display */}
+        {((mode === 'reference' && viewType === 'meta') || 
+          (mode === 'manual' && viewType === 'meta' && manualFiles.filter(f => !f.error).length > 1)) && (
+          <div className="bg-white rounded-2xl shadow-xl p-6 mb-6">
+            <div className="flex items-center gap-3 mb-6">
+              <Database className="w-8 h-8 text-purple-600" />
+              <div>
+                <h2 className="text-2xl font-bold text-gray-800">Build Meta Analysis</h2>
+                <p className="text-gray-600">
+                  Capsule effectiveness and build archetype trends across all matches
+                </p>
+              </div>
+            </div>
+            
+            <MetaAnalysisContent aggregatedData={aggregatedData} capsuleMap={capsuleMap} aiStrategies={aiStrategies} />
           </div>
         )}
 
@@ -915,8 +1366,9 @@ export default function App() {
                     icon={Target}
                   />
                   <StatBar 
-                    value={p1Summary.totalHealth} 
-                    maxValue={Math.max(p1Summary.totalHealth, p2Summary.totalHealth)} 
+                    value={(p1Summary.totalHealth / p1Summary.totalHPGaugeValueMax) * 100} 
+                    maxValue={100} 
+                    displayValue={p1Summary.totalHealth}
                     type="health" 
                     label="HP Remaining"
                     icon={Heart}
@@ -936,8 +1388,8 @@ export default function App() {
                 </h4>
                 <div className="space-y-3">
                   {p1Team.map((char, i) => {
-                    const stats = extractStats(char, charMap);
-                    const maxDamage = Math.max(...p1Team.map(c => extractStats(c, charMap).damageDone));
+                    const stats = extractStats(char, charMap, capsuleMap);
+                    const maxDamage = Math.max(...p1Team.map(c => extractStats(c, charMap, capsuleMap).damageDone));
                     
                     return (
                       <div key={i} className="bg-white rounded-lg p-4 border border-gray-200">
@@ -950,25 +1402,55 @@ export default function App() {
                         </div>
                         {stats.formChangeHistory && (
                           <div className="text-xs text-gray-500 mb-2">
-                            Forms: {stats.formChangeHistory}
+                            Multiple forms used in this match
                           </div>
                         )}
-                        <div className="grid grid-cols-2 gap-3">
-                          <StatBar 
-                            value={stats.damageDone} 
-                            maxValue={maxDamage} 
-                            type="damage" 
-                            label="Damage Dealt"
-                            icon={Target}
-                          />
-                          <StatBar 
-                            value={stats.hPGaugeValue} 
-                            maxValue={stats.hPGaugeValueMax} 
-                            type="health" 
-                            label="HP Remaining"
-                            icon={Heart}
-                          />
+                        <div className="mb-3">
+                          <BuildDisplay stats={stats} showDetailed={false} />
                         </div>
+                        
+                        {/* Primary stats in a row: Damage Done, Taken, Battle Time */}
+                        <div className="grid grid-cols-3 gap-2 mb-3 text-sm">
+                          <div className="text-center">
+                            <div className="text-red-600 font-bold text-lg">{formatNumber(stats.damageDone)}</div>
+                            <div className="text-gray-500 flex items-center justify-center gap-1">
+                              <Target className="w-3 h-3" />
+                              Damage Done
+                            </div>
+                          </div>
+                          <div className="text-center">
+                            <div className="text-blue-600 font-bold text-lg">{formatNumber(stats.damageTaken)}</div>
+                            <div className="text-gray-500 flex items-center justify-center gap-1">
+                              <Shield className="w-3 h-3" />
+                              Damage Taken
+                            </div>
+                          </div>
+                          <div className="text-center">
+                            <div className="text-orange-600 font-bold text-lg">{formatBattleTime(stats.battleTime)}</div>
+                            <div className="text-gray-500 flex items-center justify-center gap-1">
+                              <Clock className="w-3 h-3" />
+                              Battle Time
+                            </div>
+                          </div>
+                        </div>
+                        
+                        {/* HP Remaining as smaller indicator */}
+                        <div className="mb-3">
+                          <div className="flex items-center justify-between text-xs">
+                            <span className="text-gray-500 flex items-center gap-1">
+                              <Heart className="w-3 h-3" />
+                              HP Remaining
+                            </span>
+                            <span className="font-medium">{formatNumber(stats.hPGaugeValue)} / {formatNumber(stats.hPGaugeValueMax)}</span>
+                          </div>
+                          <div className="w-full bg-gray-200 rounded-full h-1 mt-1">
+                            <div 
+                              className="h-1 rounded-full bg-green-500"
+                              style={{ width: `${(stats.hPGaugeValue / stats.hPGaugeValueMax) * 100}%` }}
+                            />
+                          </div>
+                        </div>
+                        
                         <div className="grid grid-cols-3 gap-2 mt-3 text-sm">
                           <div className="text-center">
                             <div className="text-purple-600 font-semibold">{stats.specialMovesUsed}</div>
@@ -983,6 +1465,121 @@ export default function App() {
                             <div className="text-gray-500">Skills</div>
                           </div>
                         </div>
+                        
+                        {/* Form Performance Breakdown Button */}
+                        {stats.formChangeHistory && (
+                          <div className="mt-3 pt-3 border-t border-gray-200">
+                            <button 
+                              onClick={() => toggleRow('p1_form', i)} 
+                              className="w-full flex items-center justify-center gap-2 py-2 px-3 bg-yellow-50 hover:bg-yellow-100 text-yellow-700 rounded-lg border border-yellow-200 transition-colors text-sm font-medium"
+                              title="View detailed form performance data"
+                            >
+                              <Star className="w-4 h-4" />
+                              <span>Form Performance Breakdown</span>
+                              <span className="text-xs">
+                                {expandedRows[`p1_form_${i}`] ? '−' : '+'}
+                              </span>
+                            </button>
+                          </div>
+                        )}
+                        
+                        {/* Expandable Form History Breakdown */}
+                        {stats.formChangeHistory && expandedRows[`p1_form_${i}`] && (
+                          <div className="mt-3 pt-3 border-t border-gray-200">
+                            <div className="bg-yellow-50 p-4 rounded border border-yellow-200">
+                              <div className="flex items-center gap-2 mb-3">
+                                <Star className="w-4 h-4 text-yellow-600" />
+                                <span className="text-sm font-bold text-yellow-800">Form Performance Breakdown</span>
+                              </div>
+                              
+                              {/* Individual form stats from characterIdRecord if available */}
+                              {(() => {
+                                const characterIdRecord = fileContent?.BattleResults?.characterIdRecord || fileContent?.characterIdRecord;
+                                if (!characterIdRecord) {
+                                  return (
+                                    <div className="text-xs text-yellow-700">
+                                      <span className="font-medium">Forms Used:</span> {stats.formChangeHistory}
+                                      <div className="text-xs text-yellow-600 mt-1">
+                                        Individual form data not available for this match
+                                      </div>
+                                    </div>
+                                  );
+                                }
+                                
+                                // Extract form stats from characterIdRecord
+                                const originalForm = char.battlePlayCharacter?.originalCharacter?.key;
+                                const allForms = [];
+                                if (originalForm) allForms.push(originalForm);
+                                if (Array.isArray(char.formChangeHistory) && char.formChangeHistory.length > 0) {
+                                  allForms.push(...char.formChangeHistory.map(f => f.key));
+                                }
+                                
+                                const formStats = allForms.map(formId => {
+                                  const formRecord = characterIdRecord[`(Key="${formId}")`];
+                                  if (!formRecord) return null;
+                                  
+                                  const formCount = formRecord.battleCount || {};
+                                  const formNumCount = formCount.battleNumCount || {};
+                                  const formName = charMap[formId] || formId;
+                                  
+                                  return {
+                                    name: formName,
+                                    damageDone: formCount.givenDamage || 0,
+                                    damageTaken: formCount.takenDamage || 0,
+                                    battleTime: parseBattleTime(formCount.battleTime) || 0,
+                                    hPGaugeValue: formCount.hPGaugeValue || 0,
+                                    specialMoves: formNumCount.sPMCount || 0,
+                                    ultimates: formNumCount.uLTCount || 0,
+                                    skills: formNumCount.eXACount || 0,
+                                    kills: formCount.killCount || 0
+                                  };
+                                }).filter(Boolean);
+                                
+                                if (formStats.length === 0) {
+                                  return (
+                                    <div className="text-xs text-yellow-700">
+                                      <span className="font-medium">Forms Used:</span> {stats.formChangeHistory}
+                                      <div className="text-xs text-yellow-600 mt-1">
+                                        Form performance data not available
+                                      </div>
+                                    </div>
+                                  );
+                                }
+                                
+                                return (
+                                  <div className="overflow-x-auto">
+                                    <table className="w-full text-xs">
+                                      <thead>
+                                        <tr className="border-b border-yellow-300">
+                                          <th className="text-left py-1 font-medium text-yellow-800">Form</th>
+                                          <th className="text-right py-1 font-medium text-yellow-800">Damage</th>
+                                          <th className="text-right py-1 font-medium text-yellow-800">Taken</th>
+                                          <th className="text-right py-1 font-medium text-yellow-800">Time</th>
+                                          <th className="text-right py-1 font-medium text-yellow-800">HP</th>
+                                          <th className="text-right py-1 font-medium text-yellow-800">Moves</th>
+                                          <th className="text-right py-1 font-medium text-yellow-800">KOs</th>
+                                        </tr>
+                                      </thead>
+                                      <tbody>
+                                        {formStats.map((form, idx) => (
+                                          <tr key={idx} className="border-b border-yellow-200">
+                                            <td className="py-1 font-semibold text-yellow-800">{form.name}</td>
+                                            <td className="py-1 text-right text-yellow-700">{formatNumber(form.damageDone)}</td>
+                                            <td className="py-1 text-right text-yellow-700">{formatNumber(form.damageTaken)}</td>
+                                            <td className="py-1 text-right text-yellow-700">{formatBattleTime(form.battleTime)}</td>
+                                            <td className="py-1 text-right text-yellow-700">{formatNumber(form.hPGaugeValue)}</td>
+                                            <td className="py-1 text-right text-yellow-700">{form.specialMoves + form.ultimates + form.skills}</td>
+                                            <td className="py-1 text-right text-yellow-700">{form.kills}</td>
+                                          </tr>
+                                        ))}
+                                      </tbody>
+                                    </table>
+                                  </div>
+                                );
+                              })()}
+                            </div>
+                          </div>
+                        )}
                       </div>
                     );
                   })}
@@ -1018,8 +1615,9 @@ export default function App() {
                     icon={Target}
                   />
                   <StatBar 
-                    value={p2Summary.totalHealth} 
-                    maxValue={Math.max(p1Summary.totalHealth, p2Summary.totalHealth)} 
+                    value={(p2Summary.totalHealth / p2Summary.totalHPGaugeValueMax) * 100} 
+                    maxValue={100} 
+                    displayValue={p2Summary.totalHealth}
                     type="health" 
                     label="HP Remaining"
                     icon={Heart}
@@ -1039,8 +1637,8 @@ export default function App() {
                 </h4>
                 <div className="space-y-3">
                   {p2Team.map((char, i) => {
-                    const stats = extractStats(char, charMap);
-                    const maxDamage = Math.max(...p2Team.map(c => extractStats(c, charMap).damageDone));
+                    const stats = extractStats(char, charMap, capsuleMap);
+                    const maxDamage = Math.max(...p2Team.map(c => extractStats(c, charMap, capsuleMap).damageDone));
                     
                     return (
                       <div key={i} className="bg-white rounded-lg p-4 border border-gray-200">
@@ -1051,22 +1649,57 @@ export default function App() {
                             <span className="text-sm font-semibold">{stats.kills} KOs</span>
                           </div>
                         </div>
-                        <div className="grid grid-cols-2 gap-3">
-                          <StatBar 
-                            value={stats.damageDone} 
-                            maxValue={maxDamage} 
-                            type="damage" 
-                            label="Damage Dealt"
-                            icon={Target}
-                          />
-                          <StatBar 
-                            value={stats.hPGaugeValue} 
-                            maxValue={stats.hPGaugeValueMax} 
-                            type="health" 
-                            label="HP Remaining"
-                            icon={Heart}
-                          />
+                        {stats.formChangeHistory && (
+                          <div className="text-xs text-gray-500 mb-2">
+                            Multiple forms used in this match
+                          </div>
+                        )}
+                        <div className="mb-3">
+                          <BuildDisplay stats={stats} showDetailed={false} />
                         </div>
+                        
+                        {/* Primary stats in a row: Damage Done, Taken, Battle Time */}
+                        <div className="grid grid-cols-3 gap-2 mb-3 text-sm">
+                          <div className="text-center">
+                            <div className="text-red-600 font-bold text-lg">{formatNumber(stats.damageDone)}</div>
+                            <div className="text-gray-500 flex items-center justify-center gap-1">
+                              <Target className="w-3 h-3" />
+                              Damage Done
+                            </div>
+                          </div>
+                          <div className="text-center">
+                            <div className="text-blue-600 font-bold text-lg">{formatNumber(stats.damageTaken)}</div>
+                            <div className="text-gray-500 flex items-center justify-center gap-1">
+                              <Shield className="w-3 h-3" />
+                              Damage Taken
+                            </div>
+                          </div>
+                          <div className="text-center">
+                            <div className="text-orange-600 font-bold text-lg">{formatBattleTime(stats.battleTime)}</div>
+                            <div className="text-gray-500 flex items-center justify-center gap-1">
+                              <Clock className="w-3 h-3" />
+                              Battle Time
+                            </div>
+                          </div>
+                        </div>
+                        
+                        {/* HP Remaining as smaller indicator */}
+                        <div className="mb-3">
+                          <div className="flex items-center justify-between text-xs">
+                            <span className="text-gray-500 flex items-center gap-1">
+                              <Heart className="w-3 h-3" />
+                              HP Remaining
+                            </span>
+                            <span className="font-medium">{formatNumber(stats.hPGaugeValue)} / {formatNumber(stats.hPGaugeValueMax)}</span>
+                          </div>
+                          <div className="w-full bg-gray-200 rounded-full h-1 mt-1">
+                            <div 
+                              className="h-1 rounded-full bg-green-500"
+                              style={{ width: `${(stats.hPGaugeValue / stats.hPGaugeValueMax) * 100}%` }}
+                            />
+                          </div>
+                        </div>
+                        
                         <div className="grid grid-cols-3 gap-2 mt-3 text-sm">
                           <div className="text-center">
                             <div className="text-purple-600 font-semibold">{stats.specialMovesUsed}</div>
@@ -1081,6 +1714,121 @@ export default function App() {
                             <div className="text-gray-500">Skills</div>
                           </div>
                         </div>
+                        
+                        {/* Form Performance Breakdown Button */}
+                        {stats.formChangeHistory && (
+                          <div className="mt-3 pt-3 border-t border-gray-200">
+                            <button 
+                              onClick={() => toggleRow('p2_form', i)} 
+                              className="w-full flex items-center justify-center gap-2 py-2 px-3 bg-yellow-50 hover:bg-yellow-100 text-yellow-700 rounded-lg border border-yellow-200 transition-colors text-sm font-medium"
+                              title="View detailed form performance data"
+                            >
+                              <Star className="w-4 h-4" />
+                              <span>Form Performance Breakdown</span>
+                              <span className="text-xs">
+                                {expandedRows[`p2_form_${i}`] ? '−' : '+'}
+                              </span>
+                            </button>
+                          </div>
+                        )}
+                        
+                        {/* Expandable Form History Breakdown */}
+                        {stats.formChangeHistory && expandedRows[`p2_form_${i}`] && (
+                          <div className="mt-3 pt-3 border-t border-gray-200">
+                            <div className="bg-yellow-50 p-4 rounded border border-yellow-200">
+                              <div className="flex items-center gap-2 mb-3">
+                                <Star className="w-4 h-4 text-yellow-600" />
+                                <span className="text-sm font-bold text-yellow-800">Form Performance Breakdown</span>
+                              </div>
+                              
+                              {/* Individual form stats from characterIdRecord if available */}
+                              {(() => {
+                                const characterIdRecord = fileContent?.BattleResults?.characterIdRecord || fileContent?.characterIdRecord;
+                                if (!characterIdRecord) {
+                                  return (
+                                    <div className="text-xs text-yellow-700">
+                                      <span className="font-medium">Forms Used:</span> {stats.formChangeHistory}
+                                      <div className="text-xs text-yellow-600 mt-1">
+                                        Individual form data not available for this match
+                                      </div>
+                                    </div>
+                                  );
+                                }
+                                
+                                // Extract form stats from characterIdRecord
+                                const originalForm = char.battlePlayCharacter?.originalCharacter?.key;
+                                const allForms = [];
+                                if (originalForm) allForms.push(originalForm);
+                                if (Array.isArray(char.formChangeHistory) && char.formChangeHistory.length > 0) {
+                                  allForms.push(...char.formChangeHistory.map(f => f.key));
+                                }
+                                
+                                const formStats = allForms.map(formId => {
+                                  const formRecord = characterIdRecord[`(Key="${formId}")`];
+                                  if (!formRecord) return null;
+                                  
+                                  const formCount = formRecord.battleCount || {};
+                                  const formNumCount = formCount.battleNumCount || {};
+                                  const formName = charMap[formId] || formId;
+                                  
+                                  return {
+                                    name: formName,
+                                    damageDone: formCount.givenDamage || 0,
+                                    damageTaken: formCount.takenDamage || 0,
+                                    battleTime: parseBattleTime(formCount.battleTime) || 0,
+                                    hPGaugeValue: formCount.hPGaugeValue || 0,
+                                    specialMoves: formNumCount.sPMCount || 0,
+                                    ultimates: formNumCount.uLTCount || 0,
+                                    skills: formNumCount.eXACount || 0,
+                                    kills: formCount.killCount || 0
+                                  };
+                                }).filter(Boolean);
+                                
+                                if (formStats.length === 0) {
+                                  return (
+                                    <div className="text-xs text-yellow-700">
+                                      <span className="font-medium">Forms Used:</span> {stats.formChangeHistory}
+                                      <div className="text-xs text-yellow-600 mt-1">
+                                        Form performance data not available
+                                      </div>
+                                    </div>
+                                  );
+                                }
+                                
+                                return (
+                                  <div className="overflow-x-auto">
+                                    <table className="w-full text-xs">
+                                      <thead>
+                                        <tr className="border-b border-yellow-300">
+                                          <th className="text-left py-1 font-medium text-yellow-800">Form</th>
+                                          <th className="text-right py-1 font-medium text-yellow-800">Damage</th>
+                                          <th className="text-right py-1 font-medium text-yellow-800">Taken</th>
+                                          <th className="text-right py-1 font-medium text-yellow-800">Time</th>
+                                          <th className="text-right py-1 font-medium text-yellow-800">HP</th>
+                                          <th className="text-right py-1 font-medium text-yellow-800">Moves</th>
+                                          <th className="text-right py-1 font-medium text-yellow-800">KOs</th>
+                                        </tr>
+                                      </thead>
+                                      <tbody>
+                                        {formStats.map((form, idx) => (
+                                          <tr key={idx} className="border-b border-yellow-200">
+                                            <td className="py-1 font-semibold text-yellow-800">{form.name}</td>
+                                            <td className="py-1 text-right text-yellow-700">{formatNumber(form.damageDone)}</td>
+                                            <td className="py-1 text-right text-yellow-700">{formatNumber(form.damageTaken)}</td>
+                                            <td className="py-1 text-right text-yellow-700">{formatBattleTime(form.battleTime)}</td>
+                                            <td className="py-1 text-right text-yellow-700">{formatNumber(form.hPGaugeValue)}</td>
+                                            <td className="py-1 text-right text-yellow-700">{form.specialMoves + form.ultimates + form.skills}</td>
+                                            <td className="py-1 text-right text-yellow-700">{form.kills}</td>
+                                          </tr>
+                                        ))}
+                                      </tbody>
+                                    </table>
+                                  </div>
+                                );
+                              })()}
+                            </div>
+                          </div>
+                        )}
                       </div>
                     );
                   })}
