@@ -185,7 +185,7 @@ function getTeams(characterRecord) {
   };
 }
 
-function extractStats(char, charMap, capsuleMap = {}) {
+function extractStats(char, charMap, capsuleMap = {}, position = null) {
   const play = char.battlePlayCharacter || {};
   const count = char.battleCount || {};
   const numCount = count.battleNumCount || {};
@@ -247,6 +247,18 @@ function extractStats(char, charMap, capsuleMap = {}) {
     skillsUsed: numCount.eXACount || 0,
     kills: count.killCount || 0,
     formChangeHistory: formNames,
+    // Phase 1: Additional technique usage metrics
+    sparkingCount: numCount.sparkingCount || 0,
+    chargeCount: numCount.chargeCount || 0,
+    guardCount: numCount.guardCount || 0,
+    shotEnergyBulletCount: numCount.shotEnergyBulletCount || 0,
+    zCounterCount: numCount.zCounter || 0,
+    superCounterCount: numCount.superCounterCount || 0,
+    // Phase 1: Combo performance metrics
+    maxComboNum: count.maxComboNum || 0,
+    maxComboDamage: count.maxComboDamage || 0,
+    // Phase 2: Position tracking
+    position: position,
     // Equipment data
     equippedCapsules,
     totalCapsuleCost,
@@ -520,6 +532,104 @@ function MetaAnalysisContent({ aggregatedData, capsuleMap, aiStrategies, darkMod
   );
 }
 
+function getPositionBasedData(files, charMap, capsuleMap = {}) {
+  const positionStats = {
+    1: { totalMatches: 0, characters: {} }, // Position 1 (Lead)
+    2: { totalMatches: 0, characters: {} }, // Position 2 (Middle)
+    3: { totalMatches: 0, characters: {} }  // Position 3 (Anchor)
+  };
+  
+  files.forEach(file => {
+    if (file.error) return;
+    
+    const fileContent = file.content;
+    const characterRecord = fileContent?.BattleResults?.characterRecord || fileContent?.characterRecord;
+    if (!characterRecord) return;
+    
+    // Process both teams
+    Object.entries(characterRecord).forEach(([teamKey, teamData]) => {
+      if (teamKey.includes('Allies') || teamKey.includes('Enemy')) {
+        Object.entries(teamData).forEach(([memberKey, char], index) => {
+          // Extract position from member key (e.g., "AlliesTeamMember1" -> position 1)
+          const positionMatch = memberKey.match(/Member(\d+)/);
+          const position = positionMatch ? parseInt(positionMatch[1]) : index + 1;
+          
+          const stats = extractStats(char, charMap, capsuleMap, position);
+          if (!stats.name || stats.name === '-') return;
+          
+          const characterName = stats.name;
+          
+          if (!positionStats[position]) return;
+          
+          positionStats[position].totalMatches++;
+          
+          if (!positionStats[position].characters[characterName]) {
+            positionStats[position].characters[characterName] = {
+              name: characterName,
+              matchCount: 0,
+              totalDamage: 0,
+              totalTaken: 0,
+              totalHealth: 0,
+              totalBattleTime: 0,
+              totalSpecialMoves: 0,
+              totalUltimates: 0,
+              totalSkills: 0,
+              totalSparking: 0,
+              totalCharges: 0,
+              totalGuards: 0,
+              totalEnergyBlasts: 0,
+              totalComboNum: 0,
+              totalComboDamage: 0
+            };
+          }
+          
+          const charData = positionStats[position].characters[characterName];
+          charData.matchCount++;
+          charData.totalDamage += stats.damageDone;
+          charData.totalTaken += stats.damageTaken;
+          charData.totalHealth += stats.hPGaugeValue;
+          charData.totalBattleTime += stats.battleTime;
+          charData.totalSpecialMoves += stats.specialMovesUsed;
+          charData.totalUltimates += stats.ultimatesUsed;
+          charData.totalSkills += stats.skillsUsed;
+          charData.totalSparking += stats.sparkingCount;
+          charData.totalCharges += stats.chargeCount;
+          charData.totalGuards += stats.guardCount;
+          charData.totalEnergyBlasts += stats.shotEnergyBulletCount;
+          charData.totalComboNum += stats.maxComboNum;
+          charData.totalComboDamage += stats.maxComboDamage;
+        });
+      }
+    });
+  });
+  
+  // Calculate averages and format data
+  Object.keys(positionStats).forEach(position => {
+    const posData = positionStats[position];
+    posData.sortedCharacters = Object.values(posData.characters)
+      .map(char => ({
+        ...char,
+        avgDamage: char.totalDamage / char.matchCount,
+        avgTaken: char.totalTaken / char.matchCount,
+        avgHealth: char.totalHealth / char.matchCount,
+        avgBattleTime: char.totalBattleTime / char.matchCount,
+        avgSpecialMoves: char.totalSpecialMoves / char.matchCount,
+        avgUltimates: char.totalUltimates / char.matchCount,
+        avgSkills: char.totalSkills / char.matchCount,
+        avgSparking: char.totalSparking / char.matchCount,
+        avgCharges: char.totalCharges / char.matchCount,
+        avgGuards: char.totalGuards / char.matchCount,
+        avgEnergyBlasts: char.totalEnergyBlasts / char.matchCount,
+        avgComboNum: char.totalComboNum / char.matchCount,
+        avgComboDamage: char.totalComboDamage / char.matchCount,
+        damageEfficiency: char.totalDamage / Math.max(char.totalTaken, 1)
+      }))
+      .sort((a, b) => b.avgDamage - a.avgDamage);
+  });
+  
+  return positionStats;
+}
+
 function getAggregatedCharacterData(files, charMap, capsuleMap = {}) {
   const characterStats = {};
   
@@ -538,7 +648,7 @@ function getAggregatedCharacterData(files, charMap, capsuleMap = {}) {
     if (!characterRecord) return;
     
     Object.values(characterRecord).forEach(char => {
-      const stats = extractStats(char, charMap, capsuleMap);
+      const stats = extractStats(char, charMap, capsuleMap, null); // No position for aggregated data
       if (!stats.name || stats.name === '-') return;
       
       // Use original form name as the key for aggregation
@@ -557,6 +667,15 @@ function getAggregatedCharacterData(files, charMap, capsuleMap = {}) {
           totalUltimates: 0,
           totalSkills: 0,
           totalKills: 0,
+          // Phase 1: New technique usage and combo stats
+          totalSparking: 0,
+          totalCharges: 0,
+          totalGuards: 0,
+          totalEnergyBlasts: 0,
+          totalZCounters: 0,
+          totalSuperCounters: 0,
+          maxComboNumTotal: 0,
+          maxComboDamageTotal: 0,
           matchCount: 0,
           allFormsUsed: new Set(), // Track all forms used across matches
           formStats: {}, // Track per-form aggregated stats
@@ -574,6 +693,15 @@ function getAggregatedCharacterData(files, charMap, capsuleMap = {}) {
       charData.totalUltimates += stats.ultimatesUsed;
       charData.totalSkills += stats.skillsUsed;
       charData.totalKills += stats.kills;
+      // Phase 1: New technique usage and combo stats
+      charData.totalSparking += stats.sparkingCount;
+      charData.totalCharges += stats.chargeCount;
+      charData.totalGuards += stats.guardCount;
+      charData.totalEnergyBlasts += stats.shotEnergyBulletCount;
+      charData.totalZCounters += stats.zCounterCount;
+      charData.totalSuperCounters += stats.superCounterCount;
+      charData.maxComboNumTotal += stats.maxComboNum;
+      charData.maxComboDamageTotal += stats.maxComboDamage;
       charData.matchCount += 1;
       
       // Add individual match data for meta analysis
@@ -677,7 +805,16 @@ function getAggregatedCharacterData(files, charMap, capsuleMap = {}) {
       avgSpecial: Math.round((char.totalSpecial / char.matchCount) * 10) / 10,
       avgUltimates: Math.round((char.totalUltimates / char.matchCount) * 10) / 10,
       avgSkills: Math.round((char.totalSkills / char.matchCount) * 10) / 10,
-      avgKills: Math.round((char.totalKills / char.matchCount) * 10) / 10
+      avgKills: Math.round((char.totalKills / char.matchCount) * 10) / 10,
+      // Phase 1: New technique usage and combo averages
+      avgSparking: Math.round((char.totalSparking / char.matchCount) * 10) / 10,
+      avgCharges: Math.round((char.totalCharges / char.matchCount) * 10) / 10,
+      avgGuards: Math.round((char.totalGuards / char.matchCount) * 10) / 10,
+      avgEnergyBlasts: Math.round((char.totalEnergyBlasts / char.matchCount) * 10) / 10,
+      avgZCounters: Math.round((char.totalZCounters / char.matchCount) * 10) / 10,
+      avgSuperCounters: Math.round((char.totalSuperCounters / char.matchCount) * 10) / 10,
+      avgMaxCombo: Math.round((char.maxComboNumTotal / char.matchCount) * 10) / 10,
+      avgMaxComboDamage: Math.round(char.maxComboDamageTotal / char.matchCount)
     };
   }).sort((a, b) => b.totalDamage - a.totalDamage);
 }
@@ -685,7 +822,7 @@ function getAggregatedCharacterData(files, charMap, capsuleMap = {}) {
 function getTeamStats(teamRecords, charMap, capsuleMap = {}) {
   let totalDamage = 0, totalTaken = 0, totalHealth = 0, totalHPGaugeValueMax = 0, totalSpecial = 0, totalUltimates = 0, totalSkills = 0;
   teamRecords.forEach(char => {
-    const stats = extractStats(char, charMap, capsuleMap);
+    const stats = extractStats(char, charMap, capsuleMap, null); // No position for team aggregation
     totalDamage += stats.damageDone;
     totalTaken += stats.damageTaken;
     totalHealth += stats.hPGaugeValue;
@@ -722,6 +859,20 @@ export default function App() {
       return getAggregatedCharacterData(manualFiles, charMap, capsuleMap);
     }
     return [];
+  }, [mode, viewType, charMap, capsuleMap, manualFiles]);
+
+  // Position-based data for advanced analysis
+  const positionData = useMemo(() => {
+    if (mode === 'reference' && (viewType === 'aggregated' || viewType === 'meta')) {
+      const allFiles = fileNames.map(fileName => {
+        const fullPath = Object.keys(dataFiles).find((p) => p.endsWith(fileName));
+        return fullPath ? { name: fileName, content: dataFiles[fullPath] } : { name: fileName, error: 'Not found' };
+      });
+      return getPositionBasedData(allFiles, charMap, capsuleMap);
+    } else if (mode === 'manual' && (viewType === 'aggregated' || viewType === 'meta') && manualFiles.length > 1) {
+      return getPositionBasedData(manualFiles, charMap, capsuleMap);
+    }
+    return {};
   }, [mode, viewType, charMap, capsuleMap, manualFiles]);
 
   // Helper to toggle expanded state
@@ -1366,6 +1517,323 @@ export default function App() {
           </div>
         )}
 
+        {/* Position-Based Performance Analysis */}
+        {((mode === 'reference' && viewType === 'aggregated') || 
+          (mode === 'manual' && viewType === 'aggregated' && manualFiles.filter(f => !f.error).length > 1)) && 
+          Object.keys(positionData).length > 0 && (
+          <div className={`rounded-2xl shadow-xl p-6 mb-6 ${
+            darkMode ? 'bg-gray-800 border border-gray-700' : 'bg-white'
+          }`}>
+            <div className="flex items-center gap-3 mb-6">
+              <Users className={`w-8 h-8 ${darkMode ? 'text-green-400' : 'text-green-600'}`} />
+              <div>
+                <h2 className={`text-2xl font-bold ${darkMode ? 'text-white' : 'text-gray-800'}`}>Character Position Analysis</h2>
+                <p className={`${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
+                  Performance breakdown by team position (Lead, Middle, Anchor)
+                </p>
+              </div>
+            </div>
+            
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+              {[1, 2, 3].map(position => {
+                const posData = positionData[position];
+                const positionNames = ['Lead', 'Middle', 'Anchor'];
+                const positionColors = [
+                  { light: 'text-red-600', dark: 'text-red-400', bg: 'bg-red-50', darkBg: 'bg-red-900/20', border: 'border-red-200', darkBorder: 'border-red-600' },
+                  { light: 'text-blue-600', dark: 'text-blue-400', bg: 'bg-blue-50', darkBg: 'bg-blue-900/20', border: 'border-blue-200', darkBorder: 'border-blue-600' },
+                  { light: 'text-purple-600', dark: 'text-purple-400', bg: 'bg-purple-50', darkBg: 'bg-purple-900/20', border: 'border-purple-200', darkBorder: 'border-purple-600' }
+                ];
+                const colors = positionColors[position - 1];
+                
+                return (
+                  <div key={position} className={`rounded-xl border p-4 ${
+                    darkMode 
+                      ? `${colors.darkBg} ${colors.darkBorder}` 
+                      : `${colors.bg} ${colors.border}`
+                  }`}>
+                    <div className="flex items-center gap-2 mb-4">
+                      <Target className={`w-5 h-5 ${darkMode ? colors.dark : colors.light}`} />
+                      <h3 className={`text-lg font-bold ${darkMode ? 'text-white' : 'text-gray-800'}`}>
+                        Position {position}: {positionNames[position - 1]}
+                      </h3>
+                    </div>
+                    
+                    <div className={`text-sm mb-3 ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
+                      Total Matches: {posData.totalMatches}
+                    </div>
+                    
+                    {posData.sortedCharacters.length > 0 ? (
+                      <div className="space-y-3">
+                        {posData.sortedCharacters.slice(0, 5).map((char, idx) => (
+                          <div key={idx} className={`p-3 rounded-lg border ${
+                            darkMode 
+                              ? 'bg-gray-700 border-gray-600' 
+                              : 'bg-white border-gray-200'
+                          }`}>
+                            <div className="flex items-center justify-between mb-2">
+                              <span className={`font-semibold ${darkMode ? 'text-white' : 'text-gray-800'}`}>
+                                {char.name}
+                              </span>
+                              <span className={`text-xs px-2 py-1 rounded ${
+                                darkMode ? 'bg-gray-600 text-gray-300' : 'bg-gray-100 text-gray-600'
+                              }`}>
+                                {char.matchCount} matches
+                              </span>
+                            </div>
+                            
+                            <div className="grid grid-cols-2 gap-2 text-xs">
+                              <div>
+                                <div className={`${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>Avg Damage</div>
+                                <div className={`font-medium ${darkMode ? colors.dark : colors.light}`}>
+                                  {formatNumber(Math.round(char.avgDamage))}
+                                </div>
+                              </div>
+                              <div>
+                                <div className={`${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>Efficiency</div>
+                                <div className={`font-medium ${darkMode ? 'text-yellow-400' : 'text-yellow-600'}`}>
+                                  {(char.damageEfficiency).toFixed(1)}x
+                                </div>
+                              </div>
+                              <div>
+                                <div className={`${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>Avg Sparking</div>
+                                <div className={`font-medium ${darkMode ? 'text-orange-400' : 'text-orange-600'}`}>
+                                  {char.avgSparking.toFixed(1)}
+                                </div>
+                              </div>
+                              <div>
+                                <div className={`${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>Avg Combo</div>
+                                <div className={`font-medium ${darkMode ? 'text-purple-400' : 'text-purple-600'}`}>
+                                  {formatNumber(Math.round(char.avgComboDamage))}
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                        
+                        {posData.sortedCharacters.length > 5 && (
+                          <div className={`text-center text-sm ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>
+                            +{posData.sortedCharacters.length - 5} more characters...
+                          </div>
+                        )}
+                      </div>
+                    ) : (
+                      <div className={`text-center text-sm py-4 ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>
+                        No data available for this position
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+            
+            {/* Position Performance Comparison Chart */}
+            <div className={`mt-6 p-4 rounded-xl border ${
+              darkMode 
+                ? 'bg-gray-700 border-gray-600' 
+                : 'bg-gray-50 border-gray-200'
+            }`}>
+              <h4 className={`text-lg font-bold mb-4 ${darkMode ? 'text-white' : 'text-gray-800'}`}>
+                Cross-Position Performance Comparison
+              </h4>
+              
+              {/* Average damage by position */}
+              <div className="mb-6">
+                <div className={`text-sm font-medium mb-2 ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
+                  Average Damage Output by Position
+                </div>
+                <div className="grid grid-cols-3 gap-4">
+                  {[1, 2, 3].map(position => {
+                    const posData = positionData[position];
+                    const avgDamage = posData.sortedCharacters.length > 0 
+                      ? posData.sortedCharacters.reduce((sum, char) => sum + char.avgDamage, 0) / posData.sortedCharacters.length
+                      : 0;
+                    const maxAvgDamage = Math.max(...[1, 2, 3].map(p => {
+                      const pData = positionData[p];
+                      return pData.sortedCharacters.length > 0 
+                        ? pData.sortedCharacters.reduce((sum, char) => sum + char.avgDamage, 0) / pData.sortedCharacters.length
+                        : 0;
+                    }));
+                    const barWidth = maxAvgDamage > 0 ? (avgDamage / maxAvgDamage) * 100 : 0;
+                    
+                    return (
+                      <div key={position} className="text-center">
+                        <div className={`text-sm font-medium mb-1 ${darkMode ? 'text-white' : 'text-gray-800'}`}>
+                          Position {position}
+                        </div>
+                        <div className={`text-xs mb-2 ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
+                          {formatNumber(Math.round(avgDamage))}
+                        </div>
+                        <div className={`w-full h-4 rounded ${darkMode ? 'bg-gray-600' : 'bg-gray-200'}`}>
+                          <div 
+                            className={`h-4 rounded transition-all duration-300 ${
+                              position === 1 ? 'bg-red-500' : position === 2 ? 'bg-blue-500' : 'bg-purple-500'
+                            }`}
+                            style={{ width: `${barWidth}%` }}
+                          />
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+              
+              {/* Character diversity by position */}
+              <div className="mb-6">
+                <div className={`text-sm font-medium mb-2 ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
+                  Character Pool Diversity by Position
+                </div>
+                <div className="grid grid-cols-3 gap-4 text-center">
+                  {[1, 2, 3].map(position => {
+                    const posData = positionData[position];
+                    const uniqueChars = posData.sortedCharacters.length;
+                    const maxUniqueChars = Math.max(...[1, 2, 3].map(p => positionData[p].sortedCharacters.length));
+                    const diversityScore = maxUniqueChars > 0 ? (uniqueChars / maxUniqueChars) * 100 : 0;
+                    
+                    return (
+                      <div key={position} className={`p-3 rounded-lg ${
+                        darkMode ? 'bg-gray-600' : 'bg-white'
+                      }`}>
+                        <div className={`text-2xl font-bold ${
+                          position === 1 ? (darkMode ? 'text-red-400' : 'text-red-600') :
+                          position === 2 ? (darkMode ? 'text-blue-400' : 'text-blue-600') :
+                          (darkMode ? 'text-purple-400' : 'text-purple-600')
+                        }`}>
+                          {uniqueChars}
+                        </div>
+                        <div className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
+                          Unique Characters
+                        </div>
+                        <div className={`text-xs mt-1 ${darkMode ? 'text-gray-500' : 'text-gray-500'}`}>
+                          {diversityScore.toFixed(0)}% diversity
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+            
+            {/* Position Meta Summary */}
+            <div className={`mt-6 p-4 rounded-xl border ${
+              darkMode 
+                ? 'bg-gray-700 border-gray-600' 
+                : 'bg-gray-50 border-gray-200'
+            }`}>
+              <h4 className={`text-lg font-bold mb-3 ${darkMode ? 'text-white' : 'text-gray-800'}`}>
+                Position Meta Summary
+              </h4>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
+                {[1, 2, 3].map(position => {
+                  const posData = positionData[position];
+                  const positionNames = ['Lead', 'Middle', 'Anchor'];
+                  const topPerformer = posData.sortedCharacters[0];
+                  
+                  return (
+                    <div key={position} className={`p-3 rounded-lg ${
+                      darkMode ? 'bg-gray-600' : 'bg-white'
+                    }`}>
+                      <div className={`font-semibold mb-1 ${darkMode ? 'text-white' : 'text-gray-800'}`}>
+                        {positionNames[position - 1]} Position
+                      </div>
+                      {topPerformer ? (
+                        <>
+                          <div className={`${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
+                            Top: {topPerformer.name}
+                          </div>
+                          <div className={`${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                            {formatNumber(Math.round(topPerformer.avgDamage))} avg damage
+                          </div>
+                          <div className={`${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                            {posData.sortedCharacters.length} unique characters
+                          </div>
+                        </>
+                      ) : (
+                        <div className={`${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                          No data available
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+            
+            {/* Strategic Position Insights */}
+            <div className={`mt-6 p-4 rounded-xl border ${
+              darkMode 
+                ? 'bg-indigo-900/20 border-indigo-600' 
+                : 'bg-indigo-50 border-indigo-200'
+            }`}>
+              <h4 className={`text-lg font-bold mb-3 flex items-center gap-2 ${darkMode ? 'text-white' : 'text-gray-800'}`}>
+                <Target className={`w-5 h-5 ${darkMode ? 'text-indigo-400' : 'text-indigo-600'}`} />
+                Strategic Position Insights
+              </h4>
+              
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                {/* Lead Position Insights */}
+                <div className={`p-3 rounded-lg ${
+                  darkMode ? 'bg-red-900/20 border border-red-600' : 'bg-red-50 border border-red-200'
+                }`}>
+                  <div className={`font-semibold mb-2 ${darkMode ? 'text-red-400' : 'text-red-600'}`}>
+                    🥇 Lead Position (1)
+                  </div>
+                  <div className={`text-sm space-y-1 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                    <div>• First to engage opponents</div>
+                    <div>• Should have strong neutral game</div>
+                    <div>• Often needs good defensive options</div>
+                    <div>• Sets the pace for the team</div>
+                  </div>
+                  {positionData[1]?.sortedCharacters[0] && (
+                    <div className={`mt-2 text-xs ${darkMode ? 'text-red-300' : 'text-red-700'}`}>
+                      <strong>Top Pick:</strong> {positionData[1].sortedCharacters[0].name}
+                    </div>
+                  )}
+                </div>
+                
+                {/* Middle Position Insights */}
+                <div className={`p-3 rounded-lg ${
+                  darkMode ? 'bg-blue-900/20 border border-blue-600' : 'bg-blue-50 border border-blue-200'
+                }`}>
+                  <div className={`font-semibold mb-2 ${darkMode ? 'text-blue-400' : 'text-blue-600'}`}>
+                    🛡️ Middle Position (2)
+                  </div>
+                  <div className={`text-sm space-y-1 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                    <div>• Balanced role and utility</div>
+                    <div>• Can support lead or clean up</div>
+                    <div>• Often versatile characters</div>
+                    <div>• Adapts to team needs</div>
+                  </div>
+                  {positionData[2]?.sortedCharacters[0] && (
+                    <div className={`mt-2 text-xs ${darkMode ? 'text-blue-300' : 'text-blue-700'}`}>
+                      <strong>Top Pick:</strong> {positionData[2].sortedCharacters[0].name}
+                    </div>
+                  )}
+                </div>
+                
+                {/* Anchor Position Insights */}
+                <div className={`p-3 rounded-lg ${
+                  darkMode ? 'bg-purple-900/20 border border-purple-600' : 'bg-purple-50 border border-purple-200'
+                }`}>
+                  <div className={`font-semibold mb-2 ${darkMode ? 'text-purple-400' : 'text-purple-600'}`}>
+                    ⚡ Anchor Position (3)
+                  </div>
+                  <div className={`text-sm space-y-1 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                    <div>• Last character standing</div>
+                    <div>• High damage potential needed</div>
+                    <div>• Strong comeback mechanics</div>
+                    <div>• Often carries the team</div>
+                  </div>
+                  {positionData[3]?.sortedCharacters[0] && (
+                    <div className={`mt-2 text-xs ${darkMode ? 'text-purple-300' : 'text-purple-700'}`}>
+                      <strong>Top Pick:</strong> {positionData[3].sortedCharacters[0].name}
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Meta Analysis Display */}
         {((mode === 'reference' && viewType === 'meta') || 
           (mode === 'manual' && viewType === 'meta' && manualFiles.filter(f => !f.error).length > 1)) && (
@@ -1400,17 +1868,62 @@ export default function App() {
               </div>
             </div>
             
+            {/* Match Outcome Summary */}
+            {battleWinLose && (
+              <div className={`mb-6 p-4 rounded-xl border text-center ${
+                battleWinLose === 'Win'
+                  ? (darkMode 
+                      ? 'bg-green-900/20 border-green-600 text-green-400' 
+                      : 'bg-green-50 border-green-200 text-green-800')
+                  : (darkMode 
+                      ? 'bg-red-900/20 border-red-600 text-red-400' 
+                      : 'bg-red-50 border-red-200 text-red-800')
+              }`}>
+                <div className="flex items-center justify-center gap-3">
+                  <div className="text-2xl">
+                    {battleWinLose === 'Win' ? '🎉' : '😤'}
+                  </div>
+                  <div>
+                    <div className="text-lg font-bold">
+                      {battleWinLose === 'Win' ? 'P1 Team Victory!' : 'P2 Team Victory!'}
+                    </div>
+                    <div className="text-sm opacity-80">
+                      {battleWinLose === 'Win' 
+                        ? 'Player 1 emerged victorious in this battle' 
+                        : 'Player 2 emerged victorious in this battle'}
+                    </div>
+                  </div>
+                  <div className="text-2xl">
+                    {battleWinLose === 'Win' ? '🏆' : '💀'}
+                  </div>
+                </div>
+              </div>
+            )}
+            
             <div className="grid md:grid-cols-2 gap-6">
               {/* P1 Team */}
               <div className={`rounded-xl p-6 border ${
                 darkMode 
-                  ? 'border-gray-600 bg-gray-800/50'
-                  : 'border-gray-200 bg-white'
+                  ? battleWinLose === 'Win' 
+                    ? 'border-green-600 bg-green-900/10' 
+                    : 'border-red-600 bg-red-900/10'
+                  : battleWinLose === 'Win'
+                    ? 'border-green-300 bg-green-50'
+                    : 'border-red-300 bg-red-50'
               }`}>
                 <div className="flex items-center justify-between mb-4">
                   <div className="flex items-center gap-3">
                     <Users className={`w-6 h-6 ${darkMode ? 'text-blue-400' : 'text-blue-600'}`} />
                     <h3 className={`text-xl font-bold ${darkMode ? 'text-white' : 'text-gray-800'}`}>P1 Team</h3>
+                    {battleWinLose && (
+                      <div className={`px-3 py-1 rounded-full text-sm font-bold ${
+                        battleWinLose === 'Win' 
+                          ? (darkMode ? 'bg-green-900/50 text-green-400 border border-green-600' : 'bg-green-100 text-green-800 border border-green-200')
+                          : (darkMode ? 'bg-red-900/50 text-red-400 border border-red-600' : 'bg-red-100 text-red-800 border border-red-200')
+                      }`}>
+                        {battleWinLose === 'Win' ? '🏆 VICTORY' : '💀 DEFEAT'}
+                      </div>
+                    )}
                   </div>
                 </div>
                 
@@ -1448,8 +1961,8 @@ export default function App() {
                 </h4>
                 <div className="space-y-3">
                   {p1Team.map((char, i) => {
-                    const stats = extractStats(char, charMap, capsuleMap);
-                    const maxDamage = Math.max(...p1Team.map(c => extractStats(c, charMap, capsuleMap).damageDone));
+                    const stats = extractStats(char, charMap, capsuleMap, i + 1);
+                    const maxDamage = Math.max(...p1Team.map((c, idx) => extractStats(c, charMap, capsuleMap, idx + 1).damageDone));
                     
                     return (
                       <div key={i} className={`rounded-lg p-4 border ${darkMode ? 'bg-gray-700 border-gray-600' : 'bg-white border-gray-200'}`}>
@@ -1523,6 +2036,41 @@ export default function App() {
                           <div className="text-center">
                             <div className={`font-semibold ${darkMode ? 'text-blue-400' : 'text-blue-600'}`}>{stats.skillsUsed}</div>
                             <div className={`${darkMode ? 'text-gray-300' : 'text-gray-500'}`}>Skills</div>
+                          </div>
+                        </div>
+
+                        {/* Additional Technique Usage Details */}
+                        <div className={`mt-3 pt-3 border-t ${darkMode ? 'border-gray-600' : 'border-gray-200'}`}>
+                          <div className={`text-xs font-medium mb-2 ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>Additional Combat Details</div>
+                          <div className="grid grid-cols-2 gap-3 text-xs">
+                            <div className="space-y-1">
+                              <div className="flex justify-between">
+                                <span className={`${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>Sparking Mode:</span>
+                                <span className={`font-medium ${darkMode ? 'text-yellow-400' : 'text-yellow-600'}`}>{stats.sparkingCount}</span>
+                              </div>
+                              <div className="flex justify-between">
+                                <span className={`${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>Ki Charges:</span>
+                                <span className={`font-medium ${darkMode ? 'text-blue-400' : 'text-blue-600'}`}>{stats.chargeCount}</span>
+                              </div>
+                              <div className="flex justify-between">
+                                <span className={`${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>Guards:</span>
+                                <span className={`font-medium ${darkMode ? 'text-green-400' : 'text-green-600'}`}>{stats.guardCount}</span>
+                              </div>
+                            </div>
+                            <div className="space-y-1">
+                              <div className="flex justify-between">
+                                <span className={`${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>Energy Blasts:</span>
+                                <span className={`font-medium ${darkMode ? 'text-purple-400' : 'text-purple-600'}`}>{stats.shotEnergyBulletCount}</span>
+                              </div>
+                              <div className="flex justify-between">
+                                <span className={`${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>Max Combo:</span>
+                                <span className={`font-medium ${darkMode ? 'text-red-400' : 'text-red-600'}`}>{stats.maxComboNum}</span>
+                              </div>
+                              <div className="flex justify-between">
+                                <span className={`${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>Combo Damage:</span>
+                                <span className={`font-medium ${darkMode ? 'text-red-400' : 'text-red-600'}`}>{formatNumber(stats.maxComboDamage)}</span>
+                              </div>
+                            </div>
                           </div>
                         </div>
                         
@@ -1657,13 +2205,26 @@ export default function App() {
               {/* P2 Team */}
               <div className={`rounded-xl p-6 border ${
                 darkMode 
-                  ? 'border-gray-600 bg-gray-800/50'
-                  : 'border-gray-200 bg-white'
+                  ? battleWinLose === 'Lose' 
+                    ? 'border-green-600 bg-green-900/10' 
+                    : 'border-red-600 bg-red-900/10'
+                  : battleWinLose === 'Lose'
+                    ? 'border-green-300 bg-green-50'
+                    : 'border-red-300 bg-red-50'
               }`}>
                 <div className="flex items-center justify-between mb-4">
                   <div className="flex items-center gap-3">
                     <Users className={`w-6 h-6 ${darkMode ? 'text-red-400' : 'text-red-600'}`} />
                     <h3 className={`text-xl font-bold ${darkMode ? 'text-white' : 'text-gray-800'}`}>P2 Team</h3>
+                    {battleWinLose && (
+                      <div className={`px-3 py-1 rounded-full text-sm font-bold ${
+                        battleWinLose === 'Lose' 
+                          ? (darkMode ? 'bg-green-900/50 text-green-400 border border-green-600' : 'bg-green-100 text-green-800 border border-green-200')
+                          : (darkMode ? 'bg-red-900/50 text-red-400 border border-red-600' : 'bg-red-100 text-red-800 border border-red-200')
+                      }`}>
+                        {battleWinLose === 'Lose' ? '🏆 VICTORY' : '💀 DEFEAT'}
+                      </div>
+                    )}
                   </div>
                 </div>
                 
@@ -1701,8 +2262,8 @@ export default function App() {
                 </h4>
                 <div className="space-y-3">
                   {p2Team.map((char, i) => {
-                    const stats = extractStats(char, charMap, capsuleMap);
-                    const maxDamage = Math.max(...p2Team.map(c => extractStats(c, charMap, capsuleMap).damageDone));
+                    const stats = extractStats(char, charMap, capsuleMap, i + 1);
+                    const maxDamage = Math.max(...p2Team.map((c, idx) => extractStats(c, charMap, capsuleMap, idx + 1).damageDone));
                     
                     return (
                       <div key={i} className={`rounded-lg p-4 border ${darkMode ? 'bg-gray-700 border-gray-600' : 'bg-white border-gray-200'}`}>
@@ -1776,6 +2337,41 @@ export default function App() {
                           <div className="text-center">
                             <div className={`font-semibold ${darkMode ? 'text-blue-400' : 'text-blue-600'}`}>{stats.skillsUsed}</div>
                             <div className={`${darkMode ? 'text-gray-300' : 'text-gray-500'}`}>Skills</div>
+                          </div>
+                        </div>
+
+                        {/* Additional Technique Usage Details */}
+                        <div className={`mt-3 pt-3 border-t ${darkMode ? 'border-gray-600' : 'border-gray-200'}`}>
+                          <div className={`text-xs font-medium mb-2 ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>Additional Combat Details</div>
+                          <div className="grid grid-cols-2 gap-3 text-xs">
+                            <div className="space-y-1">
+                              <div className="flex justify-between">
+                                <span className={`${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>Sparking Mode:</span>
+                                <span className={`font-medium ${darkMode ? 'text-yellow-400' : 'text-yellow-600'}`}>{stats.sparkingCount}</span>
+                              </div>
+                              <div className="flex justify-between">
+                                <span className={`${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>Ki Charges:</span>
+                                <span className={`font-medium ${darkMode ? 'text-blue-400' : 'text-blue-600'}`}>{stats.chargeCount}</span>
+                              </div>
+                              <div className="flex justify-between">
+                                <span className={`${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>Guards:</span>
+                                <span className={`font-medium ${darkMode ? 'text-green-400' : 'text-green-600'}`}>{stats.guardCount}</span>
+                              </div>
+                            </div>
+                            <div className="space-y-1">
+                              <div className="flex justify-between">
+                                <span className={`${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>Energy Blasts:</span>
+                                <span className={`font-medium ${darkMode ? 'text-purple-400' : 'text-purple-600'}`}>{stats.shotEnergyBulletCount}</span>
+                              </div>
+                              <div className="flex justify-between">
+                                <span className={`${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>Max Combo:</span>
+                                <span className={`font-medium ${darkMode ? 'text-red-400' : 'text-red-600'}`}>{stats.maxComboNum}</span>
+                              </div>
+                              <div className="flex justify-between">
+                                <span className={`${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>Combo Damage:</span>
+                                <span className={`font-medium ${darkMode ? 'text-red-400' : 'text-red-600'}`}>{formatNumber(stats.maxComboDamage)}</span>
+                              </div>
+                            </div>
                           </div>
                         </div>
                         
