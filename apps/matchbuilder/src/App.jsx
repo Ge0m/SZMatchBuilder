@@ -2183,51 +2183,73 @@ const CharacterSlot = ({
               }
 
                 return (
-                <div key={i} className="mb-1">
-                  <Combobox
-                    valueId={capsuleId}
-                    items={available}
-                    getName={(c) => c.name}
-                    placeholder={`Capsule ${i + 1}`}
-                    onSelect={(id) => onUpdateCapsule(i, id)}
-                    renderItemRight={(it) => {
-                      const cost = Number(it.cost || it.Cost || 0);
-                      // compute per-character overage
-                      const used = (character.capsules||[]).filter(Boolean);
-                      const sumUsed = used.reduce((s, id) => s + (costMap[id] || 0), 0);
-                      const total = (ruleset && ruleset.totalCost) ? ruleset.totalCost : 0;
-                      const over = sumUsed - total;
-                      const EXPENSIVE_THRESHOLD = 10; // adjust as desired
-                      // determine base color by cost
-                      let baseClass = 'bg-amber-200 text-slate-800';
-                      if (cost === 1) baseClass = 'bg-amber-100 text-slate-800';
-                      else if (cost === 2) baseClass = 'bg-amber-200 text-slate-800';
-                      else if (cost >= 3) baseClass = 'bg-amber-300 text-slate-800';
-                      // determine if we should show red: either cost meets expensive threshold OR character is over budget
-                      const rulesetActive = !!(ruleset && ruleset.scope && ruleset.scope !== 'none');
-                      const showOver = (rulesetActive && over > 0) || (cost >= EXPENSIVE_THRESHOLD);
-                      const badgeClass = showOver ? 'bg-red-900 text-white' : baseClass;
-                      return (
-                        <span className={`ml-2 text-xs ${badgeClass} px-2 py-0.5 rounded-full`}>{cost}</span>
-                      );
+                <div key={i} className="mb-1 flex items-center gap-2">
+                  <div
+                    className="flex-1"
+                    tabIndex={0}
+                    role="group"
+                    aria-label={`Capsule ${i + 1} selector`}
+                    onKeyDown={(e) => {
+                      // Only trigger when the wrapper itself is focused (not inner input)
+                      if (e.key === 'Backspace' && e.target === e.currentTarget) {
+                        e.preventDefault();
+                        onUpdateCapsule(i, '');
+                      }
                     }}
-                    renderValueRight={(it) => {
-                      const cost = Number(it.cost || it.Cost || 0);
-                      const used = (character.capsules||[]).filter(Boolean);
-                      const sumUsed = used.reduce((s, id) => s + (costMap[id] || 0), 0);
-                      const total = (ruleset && ruleset.totalCost) ? ruleset.totalCost : 0;
-                      const over = sumUsed - total;
-                      const EXPENSIVE_THRESHOLD = 10;
-                      let baseClass = 'bg-amber-200 text-slate-800';
-                      if (cost === 1) baseClass = 'bg-amber-100 text-slate-800';
-                      else if (cost === 2) baseClass = 'bg-amber-200 text-slate-800';
-                      else if (cost >= 3) baseClass = 'bg-amber-300 text-slate-800';
-                      const rulesetActive = !!(ruleset && ruleset.scope && ruleset.scope !== 'none');
-                      const showOver = (rulesetActive && over > 0) || (cost >= EXPENSIVE_THRESHOLD);
-                      const badgeClass = showOver ? 'bg-red-900 text-white' : baseClass;
-                      return <span className={`text-xs ${badgeClass} px-2 py-0.5 rounded-full`}>{cost}</span>;
-                    }}
-                  />
+                  >
+                    <Combobox
+                      valueId={capsuleId}
+                      items={available}
+                      getName={(c) => c.name}
+                      placeholder={`Capsule ${i + 1}`}
+                      onSelect={(id) => onUpdateCapsule(i, id)}
+                      renderItemRight={(it) => {
+                        const cost = Number(it.cost || it.Cost || 0);
+                        // compute per-character overage
+                        const used = (character.capsules||[]).filter(Boolean);
+                        const sumUsed = used.reduce((s, id) => s + (costMap[id] || 0), 0);
+                        const total = (ruleset && ruleset.totalCost) ? ruleset.totalCost : 0;
+                        const over = sumUsed - total;
+                        const EXPENSIVE_THRESHOLD = 10; // adjust as desired
+                        // determine base color by cost
+                        let baseClass = 'bg-amber-200 text-slate-800';
+                        if (cost === 1) baseClass = 'bg-amber-100 text-slate-800';
+                        else if (cost === 2) baseClass = 'bg-amber-200 text-slate-800';
+                        else if (cost >= 3) baseClass = 'bg-amber-300 text-slate-800';
+                        // determine if we should show red: either cost meets expensive threshold OR character is over budget
+                        const rulesetActive = !!(ruleset && ruleset.scope && ruleset.scope !== 'none');
+                        const showOver = (rulesetActive && over > 0) || (cost >= EXPENSIVE_THRESHOLD);
+                        const badgeClass = showOver ? 'bg-red-900 text-white' : baseClass;
+                        return (
+                          <span className={`ml-2 text-xs ${badgeClass} px-2 py-0.5 rounded-full`}>{cost}</span>
+                        );
+                      }}
+                      renderValueRight={(it) => {
+                        const cost = Number(it.cost || it.Cost || 0);
+                        const used = (character.capsules||[]).filter(Boolean);
+                        const sumUsed = used.reduce((s, id) => s + (costMap[id] || 0), 0);
+                        const total = (ruleset && ruleset.totalCost) ? ruleset.totalCost : 0;
+                        const over = sumUsed - total;
+                        const EXPENSIVE_THRESHOLD = 10;
+                        let baseClass = 'bg-amber-200 text-slate-800';
+                        if (cost === 1) baseClass = 'bg-amber-100 text-slate-800';
+                        else if (cost === 2) baseClass = 'bg-amber-200 text-slate-800';
+                        else if (cost >= 3) baseClass = 'bg-amber-300 text-slate-800';
+                        const rulesetActive = !!(ruleset && ruleset.scope && ruleset.scope !== 'none');
+                        const showOver = (rulesetActive && over > 0) || (cost >= EXPENSIVE_THRESHOLD);
+                        const badgeClass = showOver ? 'bg-red-900 text-white' : baseClass;
+                        return <span className={`text-xs ${badgeClass} px-2 py-0.5 rounded-full`}>{cost}</span>;
+                      }}
+                    />
+                  </div>
+                  <button
+                    onClick={() => onUpdateCapsule(i, '')}
+                    className="inline-flex items-center justify-center w-7 h-7 rounded-full bg-slate-600 hover:bg-red-600 text-white text-sm"
+                    title="Remove capsule"
+                    aria-label={`Remove capsule ${i + 1}`}
+                  >
+                    <Trash2 size={12} />
+                  </button>
                 </div>
               );
             });
@@ -2237,14 +2259,39 @@ const CharacterSlot = ({
             <label className="block text-xs font-semibold text-blue-300 mb-1 uppercase tracking-wide">
               AI Strategy
             </label>
-            <Combobox
-              valueId={character.ai}
-              items={aiItems}
-              getName={(a) => a.name}
-              placeholder="Type or select AI strategy"
-              onSelect={(id) => onUpdate('ai', id)}
-              showTooltip={false}
-            />
+            <div
+              className="flex items-center gap-2"
+            >
+              <div
+                className="flex-1"
+                tabIndex={0}
+                role="group"
+                aria-label={`AI strategy selector`}
+                onKeyDown={(e) => {
+                  if (e.key === 'Backspace' && e.target === e.currentTarget) {
+                    e.preventDefault();
+                    onUpdate('ai', '');
+                  }
+                }}
+              >
+                <Combobox
+                  valueId={character.ai}
+                  items={aiItems}
+                  getName={(a) => a.name}
+                  placeholder="Type or select AI strategy"
+                  onSelect={(id) => onUpdate('ai', id)}
+                  showTooltip={false}
+                />
+              </div>
+              <button
+                onClick={() => onUpdate('ai', '')}
+                className="inline-flex items-center justify-center w-7 h-7 rounded-full bg-slate-600 hover:bg-red-600 text-white text-sm"
+                title="Remove AI strategy"
+                aria-label={`Remove AI strategy`}
+              >
+                <Trash2 size={12} />
+              </button>
+            </div>
           </div>
           <div className="flex justify-between items-center">
             <div className="flex items-center gap-2">

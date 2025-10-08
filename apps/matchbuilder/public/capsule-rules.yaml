@@ -10,7 +10,7 @@ rulesets:
       createdAt: "2025-10-04"
     totalCost: 12
     scope: per-character
-    mode: soft
+    mode: hard
     restrictions:
       - type: unique-per-character
         params:
@@ -20,19 +20,19 @@ rulesets:
           ids:
             - "00_0_0151"
 
-  draft:
+  standard-soft:
     metadata:
-      name: "Draft - single pick"
-      description: "Low-cost draft mode - very restrictive"
+      name: "Standard - Soft"
+      description: "Per-character cost limit: 12"
+      author: "team"
       createdAt: "2025-10-04"
-    totalCost: 6
+    totalCost: 12
     scope: per-character
-    mode: hard
+    mode: soft
     restrictions:
       - type: unique-per-character
-        params: { enabled: true }
-      - type: unique-per-team
-        params: { enabled: true }
+        params:
+          enabled: true
       - type: banned-ids
         params:
           ids:
