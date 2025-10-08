@@ -5,7 +5,9 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "fix-json": "node scripts/fix-json-encoding.js",
+    "watch-br-data": "node scripts/watch-br-data.js"
   },
   "dependencies": {
     "@vitejs/plugin-react": "^5.0.4",
@@ -17,6 +19,8 @@
   },
   "devDependencies": {
     "@vitejs/plugin-react": "^4.0.0",
+    "chokidar": "^3.6.0",
+    "prettier": "^3.6.2",
     "vite": "^4.0.0"
   }
 }

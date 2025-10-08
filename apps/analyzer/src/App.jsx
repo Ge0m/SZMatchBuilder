@@ -19,8 +19,21 @@ import {
   Settings,
   Package,
   Moon,
-  Sun
+  Sun,
+  Table
 } from 'lucide-react';
+
+// Import new components
+import DataTable from './components/DataTable.jsx';
+import ExportManager from './components/ExportManager.jsx';
+import { 
+  getCharacterTableConfig, 
+  getPositionTableConfig, 
+  getMetaTableConfig,
+  prepareCharacterData,
+  preparePositionData,
+  prepareMetaData
+} from './components/TableConfigs.jsx';
 
 // Dynamically import all JSON files in BR_Data
 const dataFiles = import.meta.glob('../BR_Data/*.json', { eager: true });
@@ -546,60 +559,63 @@ function getPositionBasedData(files, charMap, capsuleMap = {}) {
     const characterRecord = fileContent?.BattleResults?.characterRecord || fileContent?.characterRecord;
     if (!characterRecord) return;
     
-    // Process both teams
-    Object.entries(characterRecord).forEach(([teamKey, teamData]) => {
-      if (teamKey.includes('Allies') || teamKey.includes('Enemy')) {
-        Object.entries(teamData).forEach(([memberKey, char], index) => {
-          // Extract position from member key (e.g., "AlliesTeamMember1" -> position 1)
-          const positionMatch = memberKey.match(/Member(\d+)/);
-          const position = positionMatch ? parseInt(positionMatch[1]) : index + 1;
-          
-          const stats = extractStats(char, charMap, capsuleMap, position);
-          if (!stats.name || stats.name === '-') return;
-          
-          const characterName = stats.name;
-          
-          if (!positionStats[position]) return;
-          
-          positionStats[position].totalMatches++;
-          
-          if (!positionStats[position].characters[characterName]) {
-            positionStats[position].characters[characterName] = {
-              name: characterName,
-              matchCount: 0,
-              totalDamage: 0,
-              totalTaken: 0,
-              totalHealth: 0,
-              totalBattleTime: 0,
-              totalSpecialMoves: 0,
-              totalUltimates: 0,
-              totalSkills: 0,
-              totalSparking: 0,
-              totalCharges: 0,
-              totalGuards: 0,
-              totalEnergyBlasts: 0,
-              totalComboNum: 0,
-              totalComboDamage: 0
-            };
-          }
-          
-          const charData = positionStats[position].characters[characterName];
-          charData.matchCount++;
-          charData.totalDamage += stats.damageDone;
-          charData.totalTaken += stats.damageTaken;
-          charData.totalHealth += stats.hPGaugeValue;
-          charData.totalBattleTime += stats.battleTime;
-          charData.totalSpecialMoves += stats.specialMovesUsed;
-          charData.totalUltimates += stats.ultimatesUsed;
-          charData.totalSkills += stats.skillsUsed;
-          charData.totalSparking += stats.sparkingCount;
-          charData.totalCharges += stats.chargeCount;
-          charData.totalGuards += stats.guardCount;
-          charData.totalEnergyBlasts += stats.shotEnergyBulletCount;
-          charData.totalComboNum += stats.maxComboNum;
-          charData.totalComboDamage += stats.maxComboDamage;
-        });
+    // Process both teams - get all team member keys directly
+    const teamMemberKeys = Object.keys(characterRecord).filter(k => 
+      k.includes('AlliesTeamMember') || k.includes('EnemyTeamMember')
+    );
+    
+    teamMemberKeys.forEach(key => {
+      const char = characterRecord[key];
+      if (!char) return;
+      
+      // Extract position from key (e.g., "AlliesTeamMember1" -> position 1)
+      const positionMatch = key.match(/Member(\d+)/);
+      const position = positionMatch ? parseInt(positionMatch[1]) : null;
+      
+      if (!position || !positionStats[position]) return;
+      
+      const stats = extractStats(char, charMap, capsuleMap, position);
+      if (!stats.name || stats.name === '-') return;
+      
+      const characterName = stats.name;
+      
+      positionStats[position].totalMatches++;
+      
+      if (!positionStats[position].characters[characterName]) {
+        positionStats[position].characters[characterName] = {
+          name: characterName,
+          matchCount: 0,
+          totalDamage: 0,
+          totalTaken: 0,
+          totalHealth: 0,
+          totalBattleTime: 0,
+          totalSpecialMoves: 0,
+          totalUltimates: 0,
+          totalSkills: 0,
+          totalSparking: 0,
+          totalCharges: 0,
+          totalGuards: 0,
+          totalEnergyBlasts: 0,
+          totalComboNum: 0,
+          totalComboDamage: 0
+        };
       }
+      
+      const charData = positionStats[position].characters[characterName];
+      charData.matchCount++;
+      charData.totalDamage += stats.damageDone;
+      charData.totalTaken += stats.damageTaken;
+      charData.totalHealth += stats.hPGaugeValue;
+      charData.totalBattleTime += stats.battleTime;
+      charData.totalSpecialMoves += stats.specialMovesUsed;
+      charData.totalUltimates += stats.ultimatesUsed;
+      charData.totalSkills += stats.skillsUsed;
+      charData.totalSparking += stats.sparkingCount;
+      charData.totalCharges += stats.chargeCount;
+      charData.totalGuards += stats.guardCount;
+      charData.totalEnergyBlasts += stats.shotEnergyBulletCount;
+      charData.totalComboNum += stats.maxComboNum;
+      charData.totalComboDamage += stats.maxComboDamage;
     });
   });
   
@@ -849,13 +865,13 @@ export default function App() {
 
   // Aggregated data for reference mode
   const aggregatedData = useMemo(() => {
-    if (mode === 'reference' && (viewType === 'aggregated' || viewType === 'meta')) {
+    if (mode === 'reference' && (viewType === 'aggregated' || viewType === 'meta' || viewType === 'tables')) {
       const allFiles = fileNames.map(fileName => {
         const fullPath = Object.keys(dataFiles).find((p) => p.endsWith(fileName));
         return fullPath ? { name: fileName, content: dataFiles[fullPath] } : { name: fileName, error: 'Not found' };
       });
       return getAggregatedCharacterData(allFiles, charMap, capsuleMap);
-    } else if (mode === 'manual' && (viewType === 'aggregated' || viewType === 'meta') && manualFiles.length > 1) {
+    } else if (mode === 'manual' && (viewType === 'aggregated' || viewType === 'meta' || viewType === 'tables') && manualFiles.length > 1) {
       return getAggregatedCharacterData(manualFiles, charMap, capsuleMap);
     }
     return [];
@@ -863,13 +879,13 @@ export default function App() {
 
   // Position-based data for advanced analysis
   const positionData = useMemo(() => {
-    if (mode === 'reference' && (viewType === 'aggregated' || viewType === 'meta')) {
+    if (mode === 'reference' && (viewType === 'aggregated' || viewType === 'meta' || viewType === 'tables')) {
       const allFiles = fileNames.map(fileName => {
         const fullPath = Object.keys(dataFiles).find((p) => p.endsWith(fileName));
         return fullPath ? { name: fileName, content: dataFiles[fullPath] } : { name: fileName, error: 'Not found' };
       });
       return getPositionBasedData(allFiles, charMap, capsuleMap);
-    } else if (mode === 'manual' && (viewType === 'aggregated' || viewType === 'meta') && manualFiles.length > 1) {
+    } else if (mode === 'manual' && (viewType === 'aggregated' || viewType === 'meta' || viewType === 'tables') && manualFiles.length > 1) {
       return getPositionBasedData(manualFiles, charMap, capsuleMap);
     }
     return {};
@@ -1062,7 +1078,7 @@ export default function App() {
               <BarChart3 className={`w-6 h-6 ${darkMode ? 'text-blue-400' : 'text-blue-600'}`} />
               <h3 className={`text-xl font-bold ${darkMode ? 'text-white' : 'text-gray-800'}`}>View Type</h3>
             </div>
-            <div className="grid md:grid-cols-2 gap-4 mb-6">
+            <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
               <label className={`p-4 rounded-xl border-2 cursor-pointer transition-all ${
                 viewType === 'single' 
                   ? darkMode
@@ -1082,8 +1098,8 @@ export default function App() {
                       onChange={(e) => setViewType(e.target.value)}
                       className="sr-only"
                     />
-                    <span className="font-semibold">Single Match Analysis</span>
-                    <p className="text-sm opacity-75">Detailed view of one match</p>
+                    <span className="font-semibold">Single Match</span>
+                    <p className="text-sm opacity-75">Detailed view</p>
                   </div>
                 </div>
               </label>
@@ -1106,8 +1122,32 @@ export default function App() {
                       onChange={(e) => setViewType(e.target.value)}
                       className="sr-only"
                     />
-                    <span className="font-semibold">Aggregated Character Stats</span>
-                    <p className="text-sm opacity-75">Combined data across matches</p>
+                    <span className="font-semibold">Aggregated Stats</span>
+                    <p className="text-sm opacity-75">Combined data</p>
+                  </div>
+                </div>
+              </label>
+              <label className={`p-4 rounded-xl border-2 cursor-pointer transition-all ${
+                viewType === 'tables' 
+                  ? darkMode
+                    ? 'border-green-400 bg-green-900/30 text-green-300'
+                    : 'border-green-500 bg-green-50 text-green-700'
+                  : darkMode
+                    ? 'border-gray-600 bg-gray-700 hover:border-gray-500 text-gray-300'
+                    : 'border-gray-200 bg-gray-50 hover:border-gray-300'
+              }`}>
+                <div className="flex items-center gap-3">
+                  <Table className="w-6 h-6" />
+                  <div>
+                    <input 
+                      type="radio" 
+                      value="tables" 
+                      checked={viewType === 'tables'} 
+                      onChange={(e) => setViewType(e.target.value)}
+                      className="sr-only"
+                    />
+                    <span className="font-semibold">Data Tables</span>
+                    <p className="text-sm opacity-75">Interactive tables</p>
                   </div>
                 </div>
               </label>
@@ -1130,8 +1170,8 @@ export default function App() {
                       onChange={(e) => setViewType(e.target.value)}
                       className="sr-only"
                     />
-                    <span className="font-semibold">Build Meta Analysis</span>
-                    <p className="text-sm opacity-75">Capsule effectiveness and build trends</p>
+                    <span className="font-semibold">Meta Analysis</span>
+                    <p className="text-sm opacity-75">Build trends</p>
                   </div>
                 </div>
               </label>
@@ -1880,9 +1920,6 @@ export default function App() {
                       : 'bg-red-50 border-red-200 text-red-800')
               }`}>
                 <div className="flex items-center justify-center gap-3">
-                  <div className="text-2xl">
-                    {battleWinLose === 'Win' ? '🎉' : '😤'}
-                  </div>
                   <div>
                     <div className="text-lg font-bold">
                       {battleWinLose === 'Win' ? 'P1 Team Victory!' : 'P2 Team Victory!'}
@@ -1892,9 +1929,6 @@ export default function App() {
                         ? 'Player 1 emerged victorious in this battle' 
                         : 'Player 2 emerged victorious in this battle'}
                     </div>
-                  </div>
-                  <div className="text-2xl">
-                    {battleWinLose === 'Win' ? '🏆' : '💀'}
                   </div>
                 </div>
               </div>
@@ -1921,7 +1955,7 @@ export default function App() {
                           ? (darkMode ? 'bg-green-900/50 text-green-400 border border-green-600' : 'bg-green-100 text-green-800 border border-green-200')
                           : (darkMode ? 'bg-red-900/50 text-red-400 border border-red-600' : 'bg-red-100 text-red-800 border border-red-200')
                       }`}>
-                        {battleWinLose === 'Win' ? '🏆 VICTORY' : '💀 DEFEAT'}
+                        {battleWinLose === 'Win' ? 'VICTORY' : 'DEFEAT'}
                       </div>
                     )}
                   </div>
@@ -2222,7 +2256,7 @@ export default function App() {
                           ? (darkMode ? 'bg-green-900/50 text-green-400 border border-green-600' : 'bg-green-100 text-green-800 border border-green-200')
                           : (darkMode ? 'bg-red-900/50 text-red-400 border border-red-600' : 'bg-red-100 text-red-800 border border-red-200')
                       }`}>
-                        {battleWinLose === 'Lose' ? '🏆 VICTORY' : '💀 DEFEAT'}
+                        {battleWinLose === 'Lose' ? 'VICTORY' : 'DEFEAT'}
                       </div>
                     )}
                   </div>
@@ -2503,6 +2537,114 @@ export default function App() {
                 </div>
               </div>
             </div>
+          </div>
+        )}
+
+        {/* Data Tables View */}
+        {((mode === 'reference' && viewType === 'tables') || 
+          (mode === 'manual' && viewType === 'tables' && manualFiles.filter(f => !f.error).length > 1)) && (
+          <div className="space-y-6">
+            {/* Export Manager */}
+            <div className={`rounded-2xl shadow-xl p-6 ${darkMode ? 'bg-gray-800' : 'bg-white'}`}>
+              <ExportManager
+                aggregatedData={aggregatedData}
+                positionData={positionData}
+                metaData={{ topCapsules: prepareMetaData({ topCapsules: Object.values(aggregatedData).flatMap(char => char.equippedCapsules || []) }) }}
+                viewType={viewType}
+                darkMode={darkMode}
+                selectedFile={selectedFile}
+              />
+            </div>
+
+            {/* Character Statistics Table */}
+            {aggregatedData && Object.keys(aggregatedData).length > 0 && (
+              <div className={`rounded-2xl shadow-xl p-6 ${darkMode ? 'bg-gray-800' : 'bg-white'}`}>
+                <DataTable
+                  data={prepareCharacterData(aggregatedData)}
+                  columns={getCharacterTableConfig(darkMode).columns}
+                  title="Character Performance Statistics"
+                  exportFileName={`character_stats_${new Date().toISOString().split('T')[0]}`}
+                  onExport={(exportData, filename) => {
+                    // Handle export via ExportManager
+                    console.log('Character data export requested:', { exportData, filename });
+                  }}
+                  darkMode={darkMode}
+                  selectable={true}
+                  onSelectionChange={(selectedRows) => {
+                    console.log('Selected characters:', selectedRows);
+                  }}
+                />
+              </div>
+            )}
+
+            {/* Position Analysis Table */}
+            {positionData && Object.keys(positionData).length > 0 && (
+              <div className={`rounded-2xl shadow-xl p-6 ${darkMode ? 'bg-gray-800' : 'bg-white'}`}>
+                <DataTable
+                  data={preparePositionData(positionData)}
+                  columns={getPositionTableConfig(darkMode).columns}
+                  title="Position-Based Performance Analysis"
+                  exportFileName={`position_analysis_${new Date().toISOString().split('T')[0]}`}
+                  onExport={(exportData, filename) => {
+                    console.log('Position data export requested:', { exportData, filename });
+                  }}
+                  darkMode={darkMode}
+                  selectable={true}
+                  onSelectionChange={(selectedRows) => {
+                    console.log('Selected position data:', selectedRows);
+                  }}
+                />
+              </div>
+            )}
+
+            {/* Meta Analysis Table */}
+            {aggregatedData && Object.keys(aggregatedData).length > 0 && (
+              <div className={`rounded-2xl shadow-xl p-6 ${darkMode ? 'bg-gray-800' : 'bg-white'}`}>
+                <DataTable
+                  data={(() => {
+                    // Create meta data from aggregated character data
+                    const capsuleUsage = {};
+                    Object.values(aggregatedData).forEach(char => {
+                      if (char.equippedCapsules) {
+                        char.equippedCapsules.forEach(capsule => {
+                          if (!capsuleUsage[capsule.id]) {
+                            capsuleUsage[capsule.id] = {
+                              name: capsule.name,
+                              usage: 0,
+                              winRate: 0,
+                              characterCount: 0,
+                              type: capsule.type || 'Capsule'
+                            };
+                          }
+                          capsuleUsage[capsule.id].usage++;
+                          capsuleUsage[capsule.id].winRate += char.winRate || 0;
+                          capsuleUsage[capsule.id].characterCount++;
+                        });
+                      }
+                    });
+                    
+                    return Object.values(capsuleUsage)
+                      .map(capsule => ({
+                        ...capsule,
+                        winRate: Math.round(capsule.winRate / capsule.characterCount)
+                      }))
+                      .sort((a, b) => b.usage - a.usage)
+                      .slice(0, 50); // Top 50 capsules
+                  })()}
+                  columns={getMetaTableConfig(darkMode).columns}
+                  title="Capsule Meta Analysis"
+                  exportFileName={`meta_analysis_${new Date().toISOString().split('T')[0]}`}
+                  onExport={(exportData, filename) => {
+                    console.log('Meta data export requested:', { exportData, filename });
+                  }}
+                  darkMode={darkMode}
+                  selectable={true}
+                  onSelectionChange={(selectedRows) => {
+                    console.log('Selected meta data:', selectedRows);
+                  }}
+                />
+              </div>
+            )}
           </div>
         )}
 
