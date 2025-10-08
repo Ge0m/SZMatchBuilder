@@ -574,16 +574,24 @@ const MatchBuilder = () => {
       const text = await response.text();
       const lines = text.split("\n");
       const chars = [];
+      const seenIds = new Set();
 
       for (let i = 1; i < lines.length; i++) {
         const line = lines[i].trim();
         if (line) {
           const [name, id] = line.split(",");
           if (name && id) {
-            chars.push({
-              name: name.replace(/"/g, "").trim(),
-              id: id.replace(/"/g, "").trim(),
-            });
+            const cleanId = id.replace(/"/g, "").trim();
+            const cleanName = name.replace(/"/g, "").trim();
+            
+            // Skip duplicates based on ID
+            if (!seenIds.has(cleanId)) {
+              seenIds.add(cleanId);
+              chars.push({
+                name: cleanName,
+                id: cleanId,
+              });
+            }
           }
         }
       }
@@ -1466,6 +1474,19 @@ const Combobox = ({
     return () => { try { document.removeEventListener('combobox:hide-all', handler); } catch(e){} };
   }, []);
 
+  // Listen for the global 'close all comboboxes' event to ensure only one combobox is open at a time
+  React.useEffect(() => {
+    const handler = (event) => {
+      try {
+        if (event.detail?.except !== myComboboxId.current) {
+          closeList();
+        }
+      } catch(e){}
+    };
+    try { window.addEventListener('close-all-comboboxes', handler); } catch(e){}
+    return () => { try { window.removeEventListener('close-all-comboboxes', handler); } catch(e){} };
+  }, []);
+
   const hideTooltipSoon = (delay = 120) => {
     if (tooltipTimer.current) clearTimeout(tooltipTimer.current);
     tooltipTimer.current = setTimeout(() => {
@@ -1525,7 +1546,13 @@ const Combobox = ({
 
 
   const openList = () => {
-    if (!disabled) setOpen(true);
+    if (!disabled) {
+      // Close any other open comboboxes before opening this one
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('close-all-comboboxes', { detail: { except: myComboboxId.current } }));
+      }
+      setOpen(true);
+    }
   };
 
   const closeList = () => {

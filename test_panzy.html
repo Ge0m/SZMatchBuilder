@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Test Panzy Fix</title>
+</head>
+<body>
+    <h1>Testing Panzy Duplicates</h1>
+    <p>Open the browser console and run this JavaScript to test the character loading:</p>
+    <script>
+        async function testCharacterLoading() {
+            try {
+                const response = await fetch('apps/matchbuilder/public/characters.csv');
+                const text = await response.text();
+                const lines = text.split('\n');
+                const chars = [];
+                const seenIds = new Set();
+                
+                for (let i = 1; i < lines.length; i++) {
+                    const line = lines[i].trim();
+                    if (line) {
+                        const [name, id] = line.split(',');
+                        if (name && id) {
+                            const cleanId = id.replace(/"/g, "").trim();
+                            const cleanName = name.replace(/"/g, "").trim();
+                            
+                            if (!seenIds.has(cleanId)) {
+                                seenIds.add(cleanId);
+                                chars.push({
+                                    name: cleanName,
+                                    id: cleanId,
+                                });
+                            }
+                        }
+                    }
+                }
+                
+                // Filter for Panzy characters
+                const panzyChars = chars.filter(char => char.name.includes('Panzy'));
+                console.log('Panzy characters found:', panzyChars);
+                console.log('Total characters loaded:', chars.length);
+                
+                // Check for any duplicate IDs
+                const allIds = chars.map(c => c.id);
+                const uniqueIds = [...new Set(allIds)];
+                console.log('Duplicates removed:', allIds.length - uniqueIds.length);
+                
+                return chars;
+            } catch (err) {
+                console.error('Failed to load characters:', err);
+            }
+        }
+        
+        // Run the test
+        testCharacterLoading();
+    </script>
+</body>
+</html>
