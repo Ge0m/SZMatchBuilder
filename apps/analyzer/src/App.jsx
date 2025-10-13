@@ -1088,10 +1088,32 @@ export default function App() {
   if (fileContent && typeof fileContent === 'object') {
     const teamsArray = fileContent.teams || (fileContent.BattleResults && fileContent.BattleResults.teams);
     if (Array.isArray(teamsArray) && teamsArray.length >= 2) {
-      p1TeamName = teamsArray[0] || "Team 1";
-      p2TeamName = teamsArray[1] || "Team 2";
+      // Handle both string and object formats
+      const team1 = teamsArray[0];
+      const team2 = teamsArray[1];
+      
+      // If team1 is a string, use it directly; if it's an object, look for a teamName property
+      if (typeof team1 === 'string') {
+        p1TeamName = team1 || "Team 1";
+      } else if (team1 && typeof team1 === 'object' && team1.teamName) {
+        p1TeamName = team1.teamName || "Team 1";
+      }
+      
+      // Same for team2
+      if (typeof team2 === 'string') {
+        p2TeamName = team2 || "Team 2";
+      } else if (team2 && typeof team2 === 'object' && team2.teamName) {
+        p2TeamName = team2.teamName || "Team 2";
+      }
     } else if (Array.isArray(teamsArray) && teamsArray.length === 1) {
-      p1TeamName = teamsArray[0] || "Team 1";
+      const team1 = teamsArray[0];
+      
+      // If team1 is a string, use it directly; if it's an object, look for a teamName property
+      if (typeof team1 === 'string') {
+        p1TeamName = team1 || "Team 1";
+      } else if (team1 && typeof team1 === 'object' && team1.teamName) {
+        p1TeamName = team1.teamName || "Team 1";
+      }
     }
   }
 
