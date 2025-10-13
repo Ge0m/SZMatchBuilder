@@ -960,6 +960,19 @@ export default function App() {
     }
   }
 
+  // Extract team names from teams array (new format support)
+  let p1TeamName = "Team 1";
+  let p2TeamName = "Team 2";
+  if (fileContent && typeof fileContent === 'object') {
+    const teamsArray = fileContent.teams || (fileContent.BattleResults && fileContent.BattleResults.teams);
+    if (Array.isArray(teamsArray) && teamsArray.length >= 2) {
+      p1TeamName = teamsArray[0] || "Team 1";
+      p2TeamName = teamsArray[1] || "Team 2";
+    } else if (Array.isArray(teamsArray) && teamsArray.length === 1) {
+      p1TeamName = teamsArray[0] || "Team 1";
+    }
+  }
+
   // Extract teams for single file view
   let p1Team = [], p2Team = [];
   if (characterRecord) {
@@ -1922,12 +1935,12 @@ export default function App() {
                 <div className="flex items-center justify-center gap-3">
                   <div>
                     <div className="text-lg font-bold">
-                      {battleWinLose === 'Win' ? 'P1 Team Victory!' : 'P2 Team Victory!'}
+                      {battleWinLose === 'Win' ? `${p1TeamName} Victory!` : `${p2TeamName} Victory!`}
                     </div>
                     <div className="text-sm opacity-80">
                       {battleWinLose === 'Win' 
-                        ? 'Player 1 emerged victorious in this battle' 
-                        : 'Player 2 emerged victorious in this battle'}
+                        ? `${p1TeamName} emerged victorious in this battle` 
+                        : `${p2TeamName} emerged victorious in this battle`}
                     </div>
                   </div>
                 </div>
@@ -1948,7 +1961,7 @@ export default function App() {
                 <div className="flex items-center justify-between mb-4">
                   <div className="flex items-center gap-3">
                     <Users className={`w-6 h-6 ${darkMode ? 'text-blue-400' : 'text-blue-600'}`} />
-                    <h3 className={`text-xl font-bold ${darkMode ? 'text-white' : 'text-gray-800'}`}>P1 Team</h3>
+                    <h3 className={`text-xl font-bold ${darkMode ? 'text-white' : 'text-gray-800'}`}>{p1TeamName}</h3>
                     {battleWinLose && (
                       <div className={`px-3 py-1 rounded-full text-sm font-bold ${
                         battleWinLose === 'Win' 
@@ -2249,7 +2262,7 @@ export default function App() {
                 <div className="flex items-center justify-between mb-4">
                   <div className="flex items-center gap-3">
                     <Users className={`w-6 h-6 ${darkMode ? 'text-red-400' : 'text-red-600'}`} />
-                    <h3 className={`text-xl font-bold ${darkMode ? 'text-white' : 'text-gray-800'}`}>P2 Team</h3>
+                    <h3 className={`text-xl font-bold ${darkMode ? 'text-white' : 'text-gray-800'}`}>{p2TeamName}</h3>
                     {battleWinLose && (
                       <div className={`px-3 py-1 rounded-full text-sm font-bold ${
                         battleWinLose === 'Lose' 
