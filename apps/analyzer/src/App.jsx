@@ -649,20 +649,8 @@ function getPositionBasedData(files, charMap, capsuleMap = {}) {
 function getAggregatedCharacterData(files, charMap, capsuleMap = {}) {
   const characterStats = {};
   
-  files.forEach(file => {
-    if (file.error) return;
-    
-    let characterRecord, characterIdRecord;
-    if (file.content.BattleResults) {
-      characterRecord = file.content.BattleResults.characterRecord;
-      characterIdRecord = file.content.BattleResults.characterIdRecord;
-    } else {
-      characterRecord = file.content.characterRecord;
-      characterIdRecord = file.content.characterIdRecord;
-    }
-    
-    if (!characterRecord) return;
-    
+  // Helper function to process a characterRecord (extracted to avoid duplication)
+  function processCharacterRecord(characterRecord, characterIdRecord) {
     Object.values(characterRecord).forEach(char => {
       const stats = extractStats(char, charMap, capsuleMap, null); // No position for aggregated data
       if (!stats.name || stats.name === '-') return;
@@ -787,6 +775,48 @@ function getAggregatedCharacterData(files, charMap, capsuleMap = {}) {
         });
       }
     });
+  }
+  
+  files.forEach(file => {
+    if (file.error) return;
+    
+    let characterRecord, characterIdRecord;
+    
+    // Handle new format with teams array at the top
+    if (file.content.teams && Array.isArray(file.content.teams)) {
+      // Process all teams in the array
+      file.content.teams.forEach(team => {
+        let teamCharRecord, teamCharIdRecord;
+        
+        if (team.BattleResults) {
+          teamCharRecord = team.BattleResults.characterRecord;
+          teamCharIdRecord = team.BattleResults.characterIdRecord;
+        } else if (team.characterRecord) {
+          teamCharRecord = team.characterRecord;
+          teamCharIdRecord = team.characterIdRecord;
+        }
+        
+        if (teamCharRecord) {
+          processCharacterRecord(teamCharRecord, teamCharIdRecord);
+        }
+      });
+      return; // Already processed all teams
+    }
+    
+    // Handle standard format with BattleResults at root
+    if (file.content.BattleResults) {
+      characterRecord = file.content.BattleResults.characterRecord;
+      characterIdRecord = file.content.BattleResults.characterIdRecord;
+    } 
+    // Handle legacy format with direct properties
+    else {
+      characterRecord = file.content.characterRecord;
+      characterIdRecord = file.content.characterIdRecord;
+    }
+    
+    if (!characterRecord) return;
+    
+    processCharacterRecord(characterRecord, characterIdRecord);
   });
   
   // Calculate averages and format form history
@@ -951,10 +981,24 @@ export default function App() {
   // Find correct root for battleWinLose and characterRecord
   let battleWinLose, characterRecord;
   if (fileContent && typeof fileContent === 'object') {
-    if (fileContent.BattleResults) {
+    // Handle new format with teams array at the top
+    if (fileContent.teams && Array.isArray(fileContent.teams) && fileContent.teams.length > 0) {
+      const firstTeam = fileContent.teams[0];
+      if (firstTeam.BattleResults) {
+        battleWinLose = firstTeam.BattleResults.battleWinLose;
+        characterRecord = firstTeam.BattleResults.characterRecord;
+      } else if (firstTeam.battleWinLose) {
+        battleWinLose = firstTeam.battleWinLose;
+        characterRecord = firstTeam.characterRecord;
+      }
+    } 
+    // Handle standard format with BattleResults at root
+    else if (fileContent.BattleResults) {
       battleWinLose = fileContent.BattleResults.battleWinLose;
       characterRecord = fileContent.BattleResults.characterRecord;
-    } else {
+    } 
+    // Handle legacy format with direct properties
+    else {
       battleWinLose = fileContent.battleWinLose;
       characterRecord = fileContent.characterRecord;
     }
