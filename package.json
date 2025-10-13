@@ -18,8 +18,5 @@
   },
   "devDependencies": {
     "gh-pages": "^5.0.0"
-  },
-  "dependencies": {
-    "lucide-react": "^0.545.0"
   }
 }
