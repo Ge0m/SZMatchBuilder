@@ -1019,6 +1019,35 @@ export default function App() {
     setExpandedRows({});
   };
 
+  // Helper function to recursively search for BattleResults or battleWinLose in nested JSON
+  const findBattleData = (obj, maxDepth = 5, currentDepth = 0) => {
+    if (!obj || typeof obj !== 'object' || currentDepth >= maxDepth) {
+      return null;
+    }
+
+    // Check if current object has BattleResults
+    if (obj.BattleResults && typeof obj.BattleResults === 'object') {
+      return obj.BattleResults;
+    }
+
+    // Check if current object directly has battleWinLose (legacy format)
+    if (obj.battleWinLose && obj.characterRecord) {
+      return obj;
+    }
+
+    // Recursively search in nested objects
+    for (const key in obj) {
+      if (obj.hasOwnProperty(key) && typeof obj[key] === 'object' && obj[key] !== null) {
+        const result = findBattleData(obj[key], maxDepth, currentDepth + 1);
+        if (result) {
+          return result;
+        }
+      }
+    }
+
+    return null;
+  };
+
   // Find correct root for battleWinLose and characterRecord
   let battleWinLose, characterRecord;
   if (fileContent && typeof fileContent === 'object') {
@@ -1039,9 +1068,17 @@ export default function App() {
       characterRecord = fileContent.BattleResults.characterRecord;
     } 
     // Handle legacy format with direct properties
-    else {
+    else if (fileContent.battleWinLose && fileContent.characterRecord) {
       battleWinLose = fileContent.battleWinLose;
       characterRecord = fileContent.characterRecord;
+    }
+    // Fallback: recursively search for BattleResults in nested structure
+    else {
+      const battleData = findBattleData(fileContent);
+      if (battleData) {
+        battleWinLose = battleData.battleWinLose;
+        characterRecord = battleData.characterRecord;
+      }
     }
   }
 
