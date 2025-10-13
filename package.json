@@ -18,5 +18,8 @@
   },
   "devDependencies": {
     "gh-pages": "^5.0.0"
+  },
+  "dependencies": {
+    "vite": "^7.1.9"
   }
 }
