@@ -552,11 +552,8 @@ function getPositionBasedData(files, charMap, capsuleMap = {}) {
     3: { totalMatches: 0, characters: {} }  // Position 3 (Anchor)
   };
   
-  files.forEach(file => {
-    if (file.error) return;
-    
-    const fileContent = file.content;
-    const characterRecord = fileContent?.BattleResults?.characterRecord || fileContent?.characterRecord;
+  // Helper function to process a characterRecord
+  function processCharacterRecord(characterRecord) {
     if (!characterRecord) return;
     
     // Process both teams - get all team member keys directly
@@ -617,6 +614,43 @@ function getPositionBasedData(files, charMap, capsuleMap = {}) {
       charData.totalComboNum += stats.maxComboNum;
       charData.totalComboDamage += stats.maxComboDamage;
     });
+  }
+  
+  files.forEach(file => {
+    if (file.error) return;
+    
+    const fileContent = file.content;
+    let characterRecord;
+    
+    // Handle new format with teams array at the top
+    if (fileContent.teams && Array.isArray(fileContent.teams)) {
+      // Process all teams in the array
+      fileContent.teams.forEach(team => {
+        let teamCharRecord;
+        
+        if (team.BattleResults) {
+          teamCharRecord = team.BattleResults.characterRecord;
+        } else if (team.characterRecord) {
+          teamCharRecord = team.characterRecord;
+        }
+        
+        if (teamCharRecord) {
+          processCharacterRecord(teamCharRecord);
+        }
+      });
+      return; // Already processed all teams
+    }
+    
+    // Handle standard format with BattleResults at root
+    if (fileContent.BattleResults) {
+      characterRecord = fileContent.BattleResults.characterRecord;
+    } 
+    // Handle legacy format with direct properties
+    else {
+      characterRecord = fileContent.characterRecord;
+    }
+    
+    processCharacterRecord(characterRecord);
   });
   
   // Calculate averages and format data
