@@ -988,8 +988,15 @@ export default function App() {
       });
     })).then(results => {
       setManualFiles(results);
-      setFileContent(null);
-      setSelectedFile(null);
+      // Automatically select the first valid file if only one file was uploaded
+      const validFiles = results.filter(f => !f.error);
+      if (validFiles.length === 1) {
+        setFileContent(validFiles[0].content);
+        setSelectedFile(validFiles[0].name);
+      } else {
+        setFileContent(null);
+        setSelectedFile(null);
+      }
       setExpandedRows({});
     });
   };
