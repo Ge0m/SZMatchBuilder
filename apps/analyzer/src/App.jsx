@@ -20,7 +20,9 @@ import {
   Package,
   Moon,
   Sun,
-  Table
+  Table,
+  ChevronDown,
+  ChevronUp
 } from 'lucide-react';
 
 // Import new components
@@ -906,6 +908,209 @@ function getAggregatedCharacterData(files, charMap, capsuleMap = {}) {
   }).sort((a, b) => b.totalDamage - a.totalDamage);
 }
 
+function getTeamAggregatedData(files, charMap, capsuleMap = {}) {
+  const teamStats = {};
+  
+  files.forEach(file => {
+    if (file.error) return;
+    
+    let teams, battleWinLose, characterRecord;
+    
+    // Handle TeamBattleResults format (current BR_Data structure)
+    if (file.content.TeamBattleResults) {
+      teams = file.content.TeamBattleResults.teams;
+      battleWinLose = file.content.TeamBattleResults.battleResult?.battleWinLose;
+      characterRecord = file.content.TeamBattleResults.battleResult?.characterRecord;
+    }
+    // Handle other formats
+    else if (file.content.teams && Array.isArray(file.content.teams)) {
+      teams = file.content.teams;
+      if (file.content.teams[0]?.BattleResults) {
+        battleWinLose = file.content.teams[0].BattleResults.battleWinLose;
+        characterRecord = file.content.teams[0].BattleResults.characterRecord;
+      }
+    }
+    else if (file.content.BattleResults) {
+      battleWinLose = file.content.BattleResults.battleWinLose;
+      characterRecord = file.content.BattleResults.characterRecord;
+      // Try to extract team names from file name or default
+      teams = ["Team 1", "Team 2"];
+    }
+    
+    if (!teams || !Array.isArray(teams) || teams.length < 2 || !battleWinLose || !characterRecord) {
+      return;
+    }
+    
+    const team1Name = teams[0];
+    const team2Name = teams[1];
+    
+    // Initialize team stats if they don't exist
+    [team1Name, team2Name].forEach(teamName => {
+      if (!teamStats[teamName]) {
+        teamStats[teamName] = {
+          teamName,
+          matches: 0,
+          wins: 0,
+          losses: 0,
+          winRate: 0,
+          totalDamageDealt: 0,
+          totalDamageTaken: 0,
+          totalHealthRemaining: 0,
+          totalHealthMax: 0,
+          avgDamagePerMatch: 0,
+          avgDamageTakenPerMatch: 0,
+          avgHealthRetention: 0,
+          charactersUsed: new Set(),
+          characterUsageCount: {},
+          buildArchetypes: {
+            aggressive: 0,
+            defensive: 0,
+            technical: 0,
+            hybrid: 0,
+            noBuild: 0
+          },
+          matchHistory: [],
+          opponentRecords: {}
+        };
+      }
+    });
+    
+    // Process match result from team1's perspective
+    const team1Won = battleWinLose === 'Win';
+    const team2Won = battleWinLose === 'Lose';
+    
+    // Update win/loss records
+    teamStats[team1Name].matches++;
+    teamStats[team2Name].matches++;
+    
+    if (team1Won) {
+      teamStats[team1Name].wins++;
+      teamStats[team2Name].losses++;
+    } else if (team2Won) {
+      teamStats[team1Name].losses++;
+      teamStats[team2Name].wins++;
+    }
+    
+    // Initialize opponent records
+    if (!teamStats[team1Name].opponentRecords[team2Name]) {
+      teamStats[team1Name].opponentRecords[team2Name] = { wins: 0, losses: 0 };
+    }
+    if (!teamStats[team2Name].opponentRecords[team1Name]) {
+      teamStats[team2Name].opponentRecords[team1Name] = { wins: 0, losses: 0 };
+    }
+    
+    // Update head-to-head records
+    if (team1Won) {
+      teamStats[team1Name].opponentRecords[team2Name].wins++;
+      teamStats[team2Name].opponentRecords[team1Name].losses++;
+    } else if (team2Won) {
+      teamStats[team1Name].opponentRecords[team2Name].losses++;
+      teamStats[team2Name].opponentRecords[team1Name].wins++;
+    }
+    
+    // Process character data for both teams
+    const teams_data = getTeams(characterRecord);
+    const p1TeamStats = getTeamStats(teams_data.p1, charMap, capsuleMap);
+    const p2TeamStats = getTeamStats(teams_data.p2, charMap, capsuleMap);
+    
+    // Aggregate team 1 stats
+    teamStats[team1Name].totalDamageDealt += p1TeamStats.totalDamage;
+    teamStats[team1Name].totalDamageTaken += p1TeamStats.totalTaken;
+    teamStats[team1Name].totalHealthRemaining += p1TeamStats.totalHealth;
+    teamStats[team1Name].totalHealthMax += p1TeamStats.totalHPGaugeValueMax;
+    
+    // Aggregate team 2 stats  
+    teamStats[team2Name].totalDamageDealt += p2TeamStats.totalDamage;
+    teamStats[team2Name].totalDamageTaken += p2TeamStats.totalTaken;
+    teamStats[team2Name].totalHealthRemaining += p2TeamStats.totalHealth;
+    teamStats[team2Name].totalHealthMax += p2TeamStats.totalHPGaugeValueMax;
+    
+    // Track character usage
+    teams_data.p1.forEach(char => {
+      const stats = extractStats(char, charMap, capsuleMap);
+      if (stats.name && stats.name !== '-') {
+        teamStats[team1Name].charactersUsed.add(stats.name);
+        teamStats[team1Name].characterUsageCount[stats.name] = 
+          (teamStats[team1Name].characterUsageCount[stats.name] || 0) + 1;
+        
+        // Track build archetypes
+        const archetype = stats.buildArchetype.toLowerCase().replace(/\s+/g, '');
+        if (teamStats[team1Name].buildArchetypes.hasOwnProperty(archetype)) {
+          teamStats[team1Name].buildArchetypes[archetype]++;
+        } else {
+          teamStats[team1Name].buildArchetypes.noBuild++;
+        }
+      }
+    });
+    
+    teams_data.p2.forEach(char => {
+      const stats = extractStats(char, charMap, capsuleMap);
+      if (stats.name && stats.name !== '-') {
+        teamStats[team2Name].charactersUsed.add(stats.name);
+        teamStats[team2Name].characterUsageCount[stats.name] = 
+          (teamStats[team2Name].characterUsageCount[stats.name] || 0) + 1;
+        
+        // Track build archetypes
+        const archetype = stats.buildArchetype.toLowerCase().replace(/\s+/g, '');
+        if (teamStats[team2Name].buildArchetypes.hasOwnProperty(archetype)) {
+          teamStats[team2Name].buildArchetypes[archetype]++;
+        } else {
+          teamStats[team2Name].buildArchetypes.noBuild++;
+        }
+      }
+    });
+    
+    // Add match history
+    teamStats[team1Name].matchHistory.push({
+      opponent: team2Name,
+      result: team1Won ? 'Win' : 'Loss',
+      damageDealt: p1TeamStats.totalDamage,
+      damageTaken: p1TeamStats.totalTaken,
+      healthRemaining: p1TeamStats.totalHealth,
+      fileName: file.name
+    });
+    
+    teamStats[team2Name].matchHistory.push({
+      opponent: team1Name,
+      result: team2Won ? 'Win' : 'Loss',
+      damageDealt: p2TeamStats.totalDamage,
+      damageTaken: p2TeamStats.totalTaken,
+      healthRemaining: p2TeamStats.totalHealth,
+      fileName: file.name
+    });
+  });
+  
+  // Calculate final statistics and format data
+  return Object.values(teamStats).map(team => {
+    team.winRate = team.matches > 0 ? Math.round((team.wins / team.matches) * 100 * 10) / 10 : 0;
+    team.avgDamagePerMatch = team.matches > 0 ? Math.round(team.totalDamageDealt / team.matches) : 0;
+    team.avgDamageTakenPerMatch = team.matches > 0 ? Math.round(team.totalDamageTaken / team.matches) : 0;
+    team.avgHealthRetention = team.totalHealthMax > 0 ? 
+      Math.round((team.totalHealthRemaining / team.totalHealthMax) * 100 * 10) / 10 : 0;
+    
+    // Convert character usage set to array and sort by usage frequency
+    team.favoriteCharacters = Object.entries(team.characterUsageCount)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 5)
+      .map(([name, count]) => ({ name, usage: count }));
+    
+    // Convert set to count for UI display
+    team.uniqueCharactersUsed = team.charactersUsed.size;
+    team.charactersUsed = Array.from(team.charactersUsed);
+    
+    return team;
+  }).sort((a, b) => {
+    // Primary sort: Win rate (descending)
+    if (b.winRate !== a.winRate) return b.winRate - a.winRate;
+    // Secondary sort: Total matches (descending, more experienced teams ranked higher)
+    if (b.matches !== a.matches) return b.matches - a.matches;
+    // Tertiary sort: Damage efficiency (descending)
+    const aEfficiency = a.totalDamageTaken > 0 ? a.totalDamageDealt / a.totalDamageTaken : a.totalDamageDealt;
+    const bEfficiency = b.totalDamageTaken > 0 ? b.totalDamageDealt / b.totalDamageTaken : b.totalDamageDealt;
+    return bEfficiency - aEfficiency;
+  });
+}
+
 function getTeamStats(teamRecords, charMap, capsuleMap = {}) {
   let totalDamage = 0, totalTaken = 0, totalHealth = 0, totalHPGaugeValueMax = 0, totalSpecial = 0, totalUltimates = 0, totalSkills = 0;
   teamRecords.forEach(char => {
@@ -970,6 +1175,25 @@ export default function App() {
       return getPositionBasedData(manualFiles, charMap, capsuleMap);
     }
     return {};
+  }, [mode, viewType, charMap, capsuleMap, manualFiles]);
+
+  // Team aggregated data for team rankings
+  const teamAggregatedData = useMemo(() => {
+    if (mode === 'reference' && (viewType === 'aggregated' || viewType === 'meta' || viewType === 'tables' || viewType === 'teams')) {
+      const allFiles = fileNames.map(fileName => {
+        const fullPath = Object.keys(dataFiles).find((p) => p.endsWith(fileName));
+        if (fullPath) {
+          const moduleContent = dataFiles[fullPath];
+          const actualContent = moduleContent.default || moduleContent;
+          return { name: fileName, content: actualContent };
+        }
+        return { name: fileName, error: 'Not found' };
+      });
+      return getTeamAggregatedData(allFiles, charMap, capsuleMap);
+    } else if (mode === 'manual' && (viewType === 'aggregated' || viewType === 'meta' || viewType === 'tables' || viewType === 'teams') && manualFiles.length > 1) {
+      return getTeamAggregatedData(manualFiles, charMap, capsuleMap);
+    }
+    return [];
   }, [mode, viewType, charMap, capsuleMap, manualFiles]);
 
   // Helper to toggle expanded state
@@ -1285,7 +1509,7 @@ export default function App() {
               <BarChart3 className={`w-6 h-6 ${darkMode ? 'text-blue-400' : 'text-blue-600'}`} />
               <h3 className={`text-xl font-bold ${darkMode ? 'text-white' : 'text-gray-800'}`}>View Type</h3>
             </div>
-            <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+            <div className="grid md:grid-cols-2 lg:grid-cols-5 gap-4 mb-6">
               <label className={`p-4 rounded-xl border-2 cursor-pointer transition-all ${
                 viewType === 'single' 
                   ? darkMode
@@ -1331,6 +1555,30 @@ export default function App() {
                     />
                     <span className="font-semibold">Aggregated Stats</span>
                     <p className="text-sm opacity-75">Combined data</p>
+                  </div>
+                </div>
+              </label>
+              <label className={`p-4 rounded-xl border-2 cursor-pointer transition-all ${
+                viewType === 'teams' 
+                  ? darkMode
+                    ? 'border-yellow-400 bg-yellow-900/30 text-yellow-300'
+                    : 'border-yellow-500 bg-yellow-50 text-yellow-700'
+                  : darkMode
+                    ? 'border-gray-600 bg-gray-700 hover:border-gray-500 text-gray-300'
+                    : 'border-gray-200 bg-gray-50 hover:border-gray-300'
+              }`}>
+                <div className="flex items-center gap-3">
+                  <Users className="w-6 h-6" />
+                  <div>
+                    <input 
+                      type="radio" 
+                      value="teams" 
+                      checked={viewType === 'teams'} 
+                      onChange={(e) => setViewType(e.target.value)}
+                      className="sr-only"
+                    />
+                    <span className="font-semibold">Team Rankings</span>
+                    <p className="text-sm opacity-75">Win/Loss records</p>
                   </div>
                 </div>
               </label>
@@ -2852,6 +3100,230 @@ export default function App() {
                 />
               </div>
             )}
+          </div>
+        )}
+
+        {/* Team Rankings Display */}
+        {((mode === 'reference' && viewType === 'teams') || 
+          (mode === 'manual' && viewType === 'teams' && manualFiles.filter(f => !f.error).length > 1)) && 
+          teamAggregatedData.length > 0 && (
+          <div className={`rounded-2xl shadow-xl p-6 mb-6 ${
+            darkMode ? 'bg-gray-800 border border-gray-700' : 'bg-white'
+          }`}>
+            <div className="flex items-center gap-3 mb-6">
+              <Users className={`w-8 h-8 ${darkMode ? 'text-yellow-400' : 'text-yellow-600'}`} />
+              <div>
+                <h2 className={`text-2xl font-bold ${darkMode ? 'text-white' : 'text-gray-800'}`}>Team Rankings</h2>
+                <p className={`${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
+                  Teams ranked by win rate from {mode === 'reference' ? fileNames.length : manualFiles.filter(f => !f.error).length} battle files
+                </p>
+              </div>
+            </div>
+            
+            <div className="space-y-4">
+              {teamAggregatedData.map((team, i) => {
+                const expanded = expandedRows[`team_${i}`] || false;
+                
+                return (
+                  <div key={team.teamName} className={`rounded-xl border transition-all ${
+                    darkMode 
+                      ? 'bg-gray-700 border-gray-600 hover:border-gray-500' 
+                      : 'bg-gray-50 border-gray-200 hover:border-gray-300'
+                  }`}>
+                    <div 
+                      className="p-6 cursor-pointer"
+                      onClick={() => toggleRow('team', i)}
+                    >
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-4">
+                          <div className={`text-2xl font-bold ${
+                            i === 0 ? 'text-yellow-500' : 
+                            i === 1 ? 'text-gray-400' : 
+                            i === 2 ? 'text-orange-600' :
+                            darkMode ? 'text-gray-300' : 'text-gray-600'
+                          }`}>
+                            #{i + 1}
+                          </div>
+                          <div>
+                            <h3 className={`text-xl font-bold ${darkMode ? 'text-white' : 'text-gray-800'}`}>
+                              {team.teamName}
+                            </h3>
+                            <div className="flex items-center gap-4 text-sm">
+                              <span className={`${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
+                                {team.matches} matches
+                              </span>
+                              <span className={`${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
+                                {team.wins}W - {team.losses}L
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+                        
+                        <div className="flex items-center gap-6">
+                          <div className="text-center">
+                            <div className={`text-2xl font-bold ${
+                              team.winRate >= 75 ? 'text-green-600' :
+                              team.winRate >= 50 ? 'text-yellow-600' :
+                              'text-red-600'
+                            }`}>
+                              {team.winRate.toFixed(1)}%
+                            </div>
+                            <div className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                              Win Rate
+                            </div>
+                          </div>
+                          
+                          <div className="text-center">
+                            <div className={`text-lg font-bold ${darkMode ? 'text-white' : 'text-gray-800'}`}>
+                              {formatNumber(team.avgDamagePerMatch)}
+                            </div>
+                            <div className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                              Avg Damage
+                            </div>
+                          </div>
+                          
+                          <div className="text-center">
+                            <div className={`text-lg font-bold ${darkMode ? 'text-white' : 'text-gray-800'}`}>
+                              {team.avgHealthRetention.toFixed(1)}%
+                            </div>
+                            <div className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                              Health Retention
+                            </div>
+                          </div>
+                          
+                          <div className="text-center">
+                            <div className={`text-lg font-bold ${darkMode ? 'text-white' : 'text-gray-800'}`}>
+                              {team.uniqueCharactersUsed}
+                            </div>
+                            <div className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                              Characters Used
+                            </div>
+                          </div>
+                          
+                          {expanded ? (
+                            <ChevronUp className={`w-5 h-5 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`} />
+                          ) : (
+                            <ChevronDown className={`w-5 h-5 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`} />
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                    
+                    {expanded && (
+                      <div className={`px-6 pb-6 border-t ${darkMode ? 'border-gray-600' : 'border-gray-200'}`}>
+                        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mt-6">
+                          {/* Favorite Characters */}
+                          <div>
+                            <h4 className={`text-lg font-bold mb-3 ${darkMode ? 'text-white' : 'text-gray-800'}`}>
+                              Most Used Characters
+                            </h4>
+                            <div className="space-y-2">
+                              {team.favoriteCharacters.slice(0, 5).map((char, idx) => (
+                                <div key={char.name} className="flex items-center justify-between">
+                                  <span className={`${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                                    {char.name}
+                                  </span>
+                                  <span className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                                    {char.usage} uses
+                                  </span>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                          
+                          {/* Build Archetypes */}
+                          <div>
+                            <h4 className={`text-lg font-bold mb-3 ${darkMode ? 'text-white' : 'text-gray-800'}`}>
+                              Build Preferences
+                            </h4>
+                            <div className="space-y-2">
+                              {Object.entries(team.buildArchetypes)
+                                .filter(([type, count]) => count > 0)
+                                .sort((a, b) => b[1] - a[1])
+                                .map(([type, count]) => (
+                                <div key={type} className="flex items-center justify-between">
+                                  <span className={`capitalize ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                                    {type.charAt(0).toUpperCase() + type.slice(1)}
+                                  </span>
+                                  <span className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                                    {count} builds
+                                  </span>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                          
+                          {/* Head-to-Head Records */}
+                          <div>
+                            <h4 className={`text-lg font-bold mb-3 ${darkMode ? 'text-white' : 'text-gray-800'}`}>
+                              Head-to-Head Records
+                            </h4>
+                            <div className="space-y-2">
+                              {Object.entries(team.opponentRecords).map(([opponent, record]) => (
+                                <div key={opponent} className="flex items-center justify-between">
+                                  <span className={`${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                                    vs {opponent}
+                                  </span>
+                                  <span className={`text-sm font-medium ${
+                                    record.wins > record.losses ? 'text-green-600' :
+                                    record.wins < record.losses ? 'text-red-600' :
+                                    'text-yellow-500'
+                                  }`}>
+                                    {record.wins}W - {record.losses}L
+                                  </span>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        </div>
+                        
+                        {/* Performance Stats */}
+                        <div className="mt-6 grid grid-cols-2 md:grid-cols-4 gap-4">
+                          <div className={`p-3 rounded-lg ${darkMode ? 'bg-gray-600' : 'bg-white'}`}>
+                            <div className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                              Damage Efficiency
+                            </div>
+                            <div className={`text-xl font-bold ${darkMode ? 'text-white' : 'text-gray-800'}`}>
+                              {team.totalDamageTaken > 0 ? 
+                                (team.totalDamageDealt / team.totalDamageTaken).toFixed(2) : 
+                                '∞'
+                              }
+                            </div>
+                          </div>
+                          
+                          <div className={`p-3 rounded-lg ${darkMode ? 'bg-gray-600' : 'bg-white'}`}>
+                            <div className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                              Avg Damage Taken
+                            </div>
+                            <div className={`text-xl font-bold ${darkMode ? 'text-white' : 'text-gray-800'}`}>
+                              {formatNumber(team.avgDamageTakenPerMatch)}
+                            </div>
+                          </div>
+                          
+                          <div className={`p-3 rounded-lg ${darkMode ? 'bg-gray-600' : 'bg-white'}`}>
+                            <div className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                              Total Damage Dealt
+                            </div>
+                            <div className={`text-xl font-bold ${darkMode ? 'text-white' : 'text-gray-800'}`}>
+                              {formatNumber(team.totalDamageDealt)}
+                            </div>
+                          </div>
+                          
+                          <div className={`p-3 rounded-lg ${darkMode ? 'bg-gray-600' : 'bg-white'}`}>
+                            <div className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                              Match History
+                            </div>
+                            <div className={`text-xl font-bold ${darkMode ? 'text-white' : 'text-gray-800'}`}>
+                              {team.matchHistory.length} games
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
           </div>
         )}
 
