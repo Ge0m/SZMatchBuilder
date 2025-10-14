@@ -962,6 +962,8 @@ function getTeamAggregatedData(files, charMap, capsuleMap = {}) {
           avgHealthRetention: 0,
           charactersUsed: new Set(),
           characterUsageCount: {},
+          characterDetails: {},  // Store individual character match data
+          characterAverages: {}, // Store calculated averages per character
           buildArchetypes: {
             aggressive: 0,
             defensive: 0,
@@ -1033,6 +1035,21 @@ function getTeamAggregatedData(files, charMap, capsuleMap = {}) {
         teamStats[team1Name].characterUsageCount[stats.name] = 
           (teamStats[team1Name].characterUsageCount[stats.name] || 0) + 1;
         
+        // Initialize character details array if needed
+        if (!teamStats[team1Name].characterDetails[stats.name]) {
+          teamStats[team1Name].characterDetails[stats.name] = [];
+        }
+        
+        // Store individual character match data
+        teamStats[team1Name].characterDetails[stats.name].push({
+          damageDealt: stats.damageDone || 0,
+          damageTaken: stats.damageTaken || 0,
+          healthRemaining: stats.hPGaugeValue || 0,
+          healthMax: stats.hPGaugeValueMax || 0,
+          battleDuration: stats.battleTime || 0,
+          fileName: file.name
+        });
+        
         // Track build archetypes
         const archetype = stats.buildArchetype.toLowerCase().replace(/\s+/g, '');
         if (teamStats[team1Name].buildArchetypes.hasOwnProperty(archetype)) {
@@ -1049,6 +1066,21 @@ function getTeamAggregatedData(files, charMap, capsuleMap = {}) {
         teamStats[team2Name].charactersUsed.add(stats.name);
         teamStats[team2Name].characterUsageCount[stats.name] = 
           (teamStats[team2Name].characterUsageCount[stats.name] || 0) + 1;
+        
+        // Initialize character details array if needed
+        if (!teamStats[team2Name].characterDetails[stats.name]) {
+          teamStats[team2Name].characterDetails[stats.name] = [];
+        }
+        
+        // Store individual character match data
+        teamStats[team2Name].characterDetails[stats.name].push({
+          damageDealt: stats.damageDone || 0,
+          damageTaken: stats.damageTaken || 0,
+          healthRemaining: stats.hPGaugeValue || 0,
+          healthMax: stats.hPGaugeValueMax || 0,
+          battleDuration: stats.battleTime || 0,
+          fileName: file.name
+        });
         
         // Track build archetypes
         const archetype = stats.buildArchetype.toLowerCase().replace(/\s+/g, '');
@@ -1093,6 +1125,28 @@ function getTeamAggregatedData(files, charMap, capsuleMap = {}) {
       .sort((a, b) => b[1] - a[1])
       .slice(0, 5)
       .map(([name, count]) => ({ name, usage: count }));
+    
+    // Calculate per-character averages
+    Object.entries(team.characterDetails).forEach(([charName, matches]) => {
+      if (matches.length > 0) {
+        const totalDamageDealt = matches.reduce((sum, match) => sum + match.damageDealt, 0);
+        const totalDamageTaken = matches.reduce((sum, match) => sum + match.damageTaken, 0);
+        const totalBattleDuration = matches.reduce((sum, match) => sum + match.battleDuration, 0);
+        const matchCount = matches.length;
+        
+        team.characterAverages[charName] = {
+          avgDamageDealt: Math.round(totalDamageDealt / matchCount),
+          avgDamageTaken: Math.round(totalDamageTaken / matchCount),
+          avgDamageEfficiency: totalDamageTaken > 0 ? 
+            Math.round((totalDamageDealt / totalDamageTaken) * 100) / 100 : 
+            (totalDamageDealt > 0 ? 999 : 0),
+          avgDamagePerSecond: totalBattleDuration > 0 ? 
+            Math.round((totalDamageDealt / totalBattleDuration) * 100) / 100 : 0,
+          matchesPlayed: matchCount,
+          usageRate: Math.round((matchCount / team.matches) * 100 * 10) / 10
+        };
+      }
+    });
     
     // Convert set to count for UI display
     team.uniqueCharactersUsed = team.charactersUsed.size;
@@ -3125,7 +3179,7 @@ export default function App() {
                 const expanded = expandedRows[`team_${i}`] || false;
                 
                 return (
-                  <div key={team.teamName} className={`rounded-xl border transition-all ${
+                  <div key={team.teamName} className={`p-3 rounded-xl border transition-all ${
                     darkMode 
                       ? 'bg-gray-700 border-gray-600 hover:border-gray-500' 
                       : 'bg-gray-50 border-gray-200 hover:border-gray-300'
@@ -3211,74 +3265,8 @@ export default function App() {
                     
                     {expanded && (
                       <div className={`px-6 pb-6 border-t ${darkMode ? 'border-gray-600' : 'border-gray-200'}`}>
-                        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mt-6">
-                          {/* Favorite Characters */}
-                          <div>
-                            <h4 className={`text-lg font-bold mb-3 ${darkMode ? 'text-white' : 'text-gray-800'}`}>
-                              Most Used Characters
-                            </h4>
-                            <div className="space-y-2">
-                              {team.favoriteCharacters.slice(0, 5).map((char, idx) => (
-                                <div key={char.name} className="flex items-center justify-between">
-                                  <span className={`${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
-                                    {char.name}
-                                  </span>
-                                  <span className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
-                                    {char.usage} uses
-                                  </span>
-                                </div>
-                              ))}
-                            </div>
-                          </div>
-                          
-                          {/* Build Archetypes */}
-                          <div>
-                            <h4 className={`text-lg font-bold mb-3 ${darkMode ? 'text-white' : 'text-gray-800'}`}>
-                              Build Preferences
-                            </h4>
-                            <div className="space-y-2">
-                              {Object.entries(team.buildArchetypes)
-                                .filter(([type, count]) => count > 0)
-                                .sort((a, b) => b[1] - a[1])
-                                .map(([type, count]) => (
-                                <div key={type} className="flex items-center justify-between">
-                                  <span className={`capitalize ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
-                                    {type.charAt(0).toUpperCase() + type.slice(1)}
-                                  </span>
-                                  <span className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
-                                    {count} builds
-                                  </span>
-                                </div>
-                              ))}
-                            </div>
-                          </div>
-                          
-                          {/* Head-to-Head Records */}
-                          <div>
-                            <h4 className={`text-lg font-bold mb-3 ${darkMode ? 'text-white' : 'text-gray-800'}`}>
-                              Head-to-Head Records
-                            </h4>
-                            <div className="space-y-2">
-                              {Object.entries(team.opponentRecords).map(([opponent, record]) => (
-                                <div key={opponent} className="flex items-center justify-between">
-                                  <span className={`${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
-                                    vs {opponent}
-                                  </span>
-                                  <span className={`text-sm font-medium ${
-                                    record.wins > record.losses ? 'text-green-600' :
-                                    record.wins < record.losses ? 'text-red-600' :
-                                    'text-yellow-500'
-                                  }`}>
-                                    {record.wins}W - {record.losses}L
-                                  </span>
-                                </div>
-                              ))}
-                            </div>
-                          </div>
-                        </div>
-                        
                         {/* Performance Stats */}
-                        <div className="mt-6 grid grid-cols-2 md:grid-cols-4 gap-4">
+                        <div className="mt-6 grid grid-cols-2 md:grid-cols-4 gap-2 mb-4">
                           <div className={`p-3 rounded-lg ${darkMode ? 'bg-gray-600' : 'bg-white'}`}>
                             <div className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
                               Damage Efficiency
@@ -3302,10 +3290,10 @@ export default function App() {
                           
                           <div className={`p-3 rounded-lg ${darkMode ? 'bg-gray-600' : 'bg-white'}`}>
                             <div className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
-                              Total Damage Dealt
+                              Avg Damage Dealt
                             </div>
                             <div className={`text-xl font-bold ${darkMode ? 'text-white' : 'text-gray-800'}`}>
-                              {formatNumber(team.totalDamageDealt)}
+                              {formatNumber(team.avgDamagePerMatch)}
                             </div>
                           </div>
                           
@@ -3316,6 +3304,168 @@ export default function App() {
                             <div className={`text-xl font-bold ${darkMode ? 'text-white' : 'text-gray-800'}`}>
                               {team.matchHistory.length} games
                             </div>
+                          </div>
+                        </div>
+
+                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                          {/* Character Performance - Expandable */}
+                          <div className={`rounded-lg p-2 ${darkMode ? 'bg-gray-700' : 'bg-gray-50'}`}>
+                            <div 
+                              className={`rounded-lg p-4 bg-gray-600 flex items-center justify-between cursor-pointer transition-colors ${
+                                darkMode ? 'hover:bg-gray-500' : 'hover:bg-gray-100'
+                              } rounded p-2 -m-2`}
+                              onClick={() => toggleRow('character_performance', i)}
+                            >
+                              <h4 className={`text-lg font-bold ${darkMode ? 'text-white' : 'text-gray-800'}`}>
+                                Character Performance
+                              </h4>
+                              {expandedRows[`character_performance_${i}`] ? (
+                                <ChevronUp className={`w-4 h-4 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`} />
+                              ) : (
+                                <ChevronDown className={`w-4 h-4 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`} />
+                              )}
+                            </div>
+                            
+                            {expandedRows[`character_performance_${i}`] && (
+                              <div className="p-3 rounded-lg border border-gray-600 space-y-3">
+                                {Object.entries(team.characterAverages)
+                                  .sort((a, b) => b[1].avgDamageDealt - a[1].avgDamageDealt)
+                                  .slice(0, 8)
+                                  .map(([charName, stats]) => (
+                                  <div key={charName} className={`p-3 rounded-lg ${
+                                    darkMode ? 'bg-gray-600' : 'bg-white'
+                                  } border ${darkMode ? 'border-gray-500' : 'border-gray-200'}`}>
+                                    <div className={`font-medium mb-2 ${darkMode ? 'text-white' : 'text-gray-800'}`}>
+                                      {charName}
+                                    </div>
+                                    <div className="grid grid-cols-2 gap-2 text-xs">
+                                      <div>
+                                        <div className={`${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                                          Avg Damage
+                                        </div>
+                                        <div className={`font-bold ${darkMode ? 'text-green-400' : 'text-green-600'}`}>
+                                          {formatNumber(stats.avgDamageDealt)}
+                                        </div>
+                                      </div>
+                                      <div>
+                                        <div className={`${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                                          Avg Taken
+                                        </div>
+                                        <div className={`font-bold ${darkMode ? 'text-red-400' : 'text-red-600'}`}>
+                                          {formatNumber(stats.avgDamageTaken)}
+                                        </div>
+                                      </div>
+                                      <div>
+                                        <div className={`${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                                          Efficiency
+                                        </div>
+                                        <div className={`font-bold ${darkMode ? 'text-blue-400' : 'text-blue-600'}`}>
+                                          {stats.avgDamageEfficiency.toFixed(2)}
+                                        </div>
+                                      </div>
+                                      <div>
+                                        <div className={`${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                                          DPS
+                                        </div>
+                                        <div className={`font-bold ${darkMode ? 'text-purple-400' : 'text-purple-600'}`}>
+                                          {stats.avgDamagePerSecond.toFixed(1)}
+                                        </div>
+                                      </div>
+                                    </div>
+                                    <div className={`mt-2 text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                                      Matches Used In: {stats.matchesPlayed} ({stats.usageRate}% usage)
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                          
+                          {/* Head-to-Head Records - Expandable */}
+                          <div className={`rounded-lg p-2 ${darkMode ? 'bg-gray-700' : 'bg-gray-50'}`}>
+                            <div 
+                              className={`rounded-lg p-4 bg-gray-600 flex items-center justify-between cursor-pointer transition-colors ${
+                                darkMode ? 'hover:bg-gray-500' : 'hover:bg-gray-100'
+                              } rounded p-2 -m-2`}
+                              onClick={() => toggleRow('head_to_head', i)}
+                            >
+                              <h4 className={`text-lg font-bold ${darkMode ? 'text-white' : 'text-gray-800'}`}>
+                                Head-to-Head Records
+                              </h4>
+                              {expandedRows[`head_to_head_${i}`] ? (
+                                <ChevronUp className={`w-4 h-4 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`} />
+                              ) : (
+                                <ChevronDown className={`w-4 h-4 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`} />
+                              )}
+                            </div>
+                            
+                            {expandedRows[`head_to_head_${i}`] && (
+                              <div className="p-3 rounded-lg border border-gray-400 space-y-3">
+                                {Object.entries(team.opponentRecords).map(([opponent, record]) => {
+                                  // Calculate head-to-head stats
+                                  const h2hMatches = team.matchHistory.filter(match => match.opponent === opponent);
+                                  const h2hTotalDamageDealt = h2hMatches.reduce((sum, match) => sum + match.damageDealt, 0);
+                                  const h2hTotalDamageTaken = h2hMatches.reduce((sum, match) => sum + match.damageTaken, 0);
+                                  const h2hAvgDamageDealt = h2hMatches.length > 0 ? Math.round(h2hTotalDamageDealt / h2hMatches.length) : 0;
+                                  const h2hAvgDamageTaken = h2hMatches.length > 0 ? Math.round(h2hTotalDamageTaken / h2hMatches.length) : 0;
+                                  const h2hDamageEfficiency = h2hTotalDamageTaken > 0 ? (h2hTotalDamageDealt / h2hTotalDamageTaken).toFixed(2) : '∞';
+                                  
+                                  return (
+                                    <div key={opponent} className={`p-3 rounded-lg border ${
+                                      darkMode ? 'bg-gray-600 border-gray-500' : 'bg-white border-gray-200'
+                                    }`}>
+                                      <div className="flex items-center justify-between mb-3">
+                                        <span className={`font-medium ${darkMode ? 'text-white' : 'text-gray-800'}`}>
+                                          vs {opponent}
+                                        </span>
+                                        <span className={`text-sm font-medium ${
+                                          record.wins > record.losses ? 'text-green-600' :
+                                          record.wins < record.losses ? 'text-red-600' :
+                                          'text-yellow-500'
+                                        }`}>
+                                          {record.wins}W - {record.losses}L
+                                        </span>
+                                      </div>
+                                      
+                                      <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-xs">
+                                        <div>
+                                          <div className={`${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                                            Efficiency
+                                          </div>
+                                          <div className={`font-bold ${darkMode ? 'text-blue-400' : 'text-blue-600'}`}>
+                                            {h2hDamageEfficiency}
+                                          </div>
+                                        </div>
+                                        <div>
+                                          <div className={`${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                                            Avg Dealt
+                                          </div>
+                                          <div className={`font-bold ${darkMode ? 'text-green-400' : 'text-green-600'}`}>
+                                            {formatNumber(h2hAvgDamageDealt)}
+                                          </div>
+                                        </div>
+                                        <div>
+                                          <div className={`${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                                            Avg Taken
+                                          </div>
+                                          <div className={`font-bold ${darkMode ? 'text-red-400' : 'text-red-600'}`}>
+                                            {formatNumber(h2hAvgDamageTaken)}
+                                          </div>
+                                        </div>
+                                        <div>
+                                          <div className={`${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                                            Matches
+                                          </div>
+                                          <div className={`font-bold ${darkMode ? 'text-white' : 'text-gray-800'}`}>
+                                            {h2hMatches.length}
+                                          </div>
+                                        </div>
+                                      </div>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            )}
                           </div>
                         </div>
                       </div>
