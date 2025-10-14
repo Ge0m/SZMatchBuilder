@@ -622,8 +622,12 @@ function getPositionBasedData(files, charMap, capsuleMap = {}) {
     const fileContent = file.content;
     let characterRecord;
     
+    // Handle TeamBattleResults format (current BR_Data structure)
+    if (fileContent.TeamBattleResults && fileContent.TeamBattleResults.battleResult) {
+      characterRecord = fileContent.TeamBattleResults.battleResult.characterRecord;
+    }
     // Handle new format with teams array at the top
-    if (fileContent.teams && Array.isArray(fileContent.teams)) {
+    else if (fileContent.teams && Array.isArray(fileContent.teams)) {
       // Process all teams in the array
       fileContent.teams.forEach(team => {
         let teamCharRecord;
@@ -640,9 +644,8 @@ function getPositionBasedData(files, charMap, capsuleMap = {}) {
       });
       return; // Already processed all teams
     }
-    
     // Handle standard format with BattleResults at root
-    if (fileContent.BattleResults) {
+    else if (fileContent.BattleResults) {
       characterRecord = fileContent.BattleResults.characterRecord;
     } 
     // Handle legacy format with direct properties
@@ -816,8 +819,13 @@ function getAggregatedCharacterData(files, charMap, capsuleMap = {}) {
     
     let characterRecord, characterIdRecord;
     
+    // Handle TeamBattleResults format (current BR_Data structure)
+    if (file.content.TeamBattleResults && file.content.TeamBattleResults.battleResult) {
+      characterRecord = file.content.TeamBattleResults.battleResult.characterRecord;
+      characterIdRecord = file.content.TeamBattleResults.battleResult.characterIdRecord;
+    }
     // Handle new format with teams array at the top
-    if (file.content.teams && Array.isArray(file.content.teams)) {
+    else if (file.content.teams && Array.isArray(file.content.teams)) {
       // Process all teams in the array
       file.content.teams.forEach(team => {
         let teamCharRecord, teamCharIdRecord;
@@ -836,9 +844,8 @@ function getAggregatedCharacterData(files, charMap, capsuleMap = {}) {
       });
       return; // Already processed all teams
     }
-    
     // Handle standard format with BattleResults at root
-    if (file.content.BattleResults) {
+    else if (file.content.BattleResults) {
       characterRecord = file.content.BattleResults.characterRecord;
       characterIdRecord = file.content.BattleResults.characterIdRecord;
     } 
@@ -932,7 +939,12 @@ export default function App() {
     if (mode === 'reference' && (viewType === 'aggregated' || viewType === 'meta' || viewType === 'tables')) {
       const allFiles = fileNames.map(fileName => {
         const fullPath = Object.keys(dataFiles).find((p) => p.endsWith(fileName));
-        return fullPath ? { name: fileName, content: dataFiles[fullPath] } : { name: fileName, error: 'Not found' };
+        if (fullPath) {
+          const moduleContent = dataFiles[fullPath];
+          const actualContent = moduleContent.default || moduleContent;
+          return { name: fileName, content: actualContent };
+        }
+        return { name: fileName, error: 'Not found' };
       });
       return getAggregatedCharacterData(allFiles, charMap, capsuleMap);
     } else if (mode === 'manual' && (viewType === 'aggregated' || viewType === 'meta' || viewType === 'tables') && manualFiles.length > 1) {
@@ -946,7 +958,12 @@ export default function App() {
     if (mode === 'reference' && (viewType === 'aggregated' || viewType === 'meta' || viewType === 'tables')) {
       const allFiles = fileNames.map(fileName => {
         const fullPath = Object.keys(dataFiles).find((p) => p.endsWith(fileName));
-        return fullPath ? { name: fileName, content: dataFiles[fullPath] } : { name: fileName, error: 'Not found' };
+        if (fullPath) {
+          const moduleContent = dataFiles[fullPath];
+          const actualContent = moduleContent.default || moduleContent;
+          return { name: fileName, content: actualContent };
+        }
+        return { name: fileName, error: 'Not found' };
       });
       return getPositionBasedData(allFiles, charMap, capsuleMap);
     } else if (mode === 'manual' && (viewType === 'aggregated' || viewType === 'meta' || viewType === 'tables') && manualFiles.length > 1) {
@@ -964,7 +981,10 @@ export default function App() {
     setSelectedFile(fileName);
     const fullPath = Object.keys(dataFiles).find((p) => p.endsWith(fileName));
     if (fullPath) {
-      setFileContent(dataFiles[fullPath]);
+      // Access the default export from Vite's import.meta.glob
+      const moduleContent = dataFiles[fullPath];
+      const actualContent = moduleContent.default || moduleContent;
+      setFileContent(actualContent);
     } else {
       setFileContent({ error: 'File not found.' });
     }
@@ -1019,10 +1039,18 @@ export default function App() {
     setExpandedRows({});
   };
 
-  // Helper function to recursively search for BattleResults or battleWinLose in nested JSON
+  // Helper function to recursively search for BattleResults, TeamBattleResults, or battleWinLose in nested JSON
   const findBattleData = (obj, maxDepth = 5, currentDepth = 0) => {
     if (!obj || typeof obj !== 'object' || currentDepth >= maxDepth) {
       return null;
+    }
+
+    // Check if current object has TeamBattleResults (current BR_Data format)
+    if (obj.TeamBattleResults && typeof obj.TeamBattleResults === 'object') {
+      const teamBattleResults = obj.TeamBattleResults;
+      if (teamBattleResults.battleResult) {
+        return teamBattleResults.battleResult;
+      }
     }
 
     // Check if current object has BattleResults
@@ -1051,8 +1079,16 @@ export default function App() {
   // Find correct root for battleWinLose and characterRecord
   let battleWinLose, characterRecord;
   if (fileContent && typeof fileContent === 'object') {
+    // Handle TeamBattleResults format (current BR_Data structure)
+    if (fileContent.TeamBattleResults && typeof fileContent.TeamBattleResults === 'object') {
+      const teamBattleResults = fileContent.TeamBattleResults;
+      if (teamBattleResults.battleResult) {
+        battleWinLose = teamBattleResults.battleResult.battleWinLose;
+        characterRecord = teamBattleResults.battleResult.characterRecord;
+      }
+    }
     // Handle new format with teams array at the top
-    if (fileContent.teams && Array.isArray(fileContent.teams) && fileContent.teams.length > 0) {
+    else if (fileContent.teams && Array.isArray(fileContent.teams) && fileContent.teams.length > 0) {
       const firstTeam = fileContent.teams[0];
       if (firstTeam.BattleResults) {
         battleWinLose = firstTeam.BattleResults.battleWinLose;
@@ -1082,12 +1118,26 @@ export default function App() {
     }
   }
 
-  // Extract team names from teams array (new format support)
+  // Extract team names from teams array (multiple format support)
   let p1TeamName = "Team 1";
   let p2TeamName = "Team 2";
   if (fileContent && typeof fileContent === 'object') {
-    const teamsArray = fileContent.teams || (fileContent.BattleResults && fileContent.BattleResults.teams);
-    if (Array.isArray(teamsArray) && teamsArray.length >= 2) {
+    let teamsArray = null;
+    
+    // Check for TeamBattleResults format first
+    if (fileContent.TeamBattleResults && Array.isArray(fileContent.TeamBattleResults.teams)) {
+      teamsArray = fileContent.TeamBattleResults.teams;
+    }
+    // Check for direct teams array
+    else if (Array.isArray(fileContent.teams)) {
+      teamsArray = fileContent.teams;
+    }
+    // Check for nested teams in BattleResults
+    else if (fileContent.BattleResults && Array.isArray(fileContent.BattleResults.teams)) {
+      teamsArray = fileContent.BattleResults.teams;
+    }
+    
+    if (teamsArray && teamsArray.length >= 2) {
       // Handle both string and object formats
       const team1 = teamsArray[0];
       const team2 = teamsArray[1];
@@ -1105,7 +1155,7 @@ export default function App() {
       } else if (team2 && typeof team2 === 'object' && team2.teamName) {
         p2TeamName = team2.teamName || "Team 2";
       }
-    } else if (Array.isArray(teamsArray) && teamsArray.length === 1) {
+    } else if (teamsArray && teamsArray.length === 1) {
       const team1 = teamsArray[0];
       
       // If team1 is a string, use it directly; if it's an object, look for a teamName property
