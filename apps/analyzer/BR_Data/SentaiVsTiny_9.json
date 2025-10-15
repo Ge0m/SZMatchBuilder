@@ -1,6 +1,6 @@
 {
   "TeamBattleResults": {
-  "teams": ["Sentai","Tiny Terrors"],
+    "teams": ["Sentai", "Tiny Terrors"],
     "battleResult": {
       "battleWinLose": "Lose",
       "battleSettlementIndex": 0,

@@ -1,6 +1,6 @@
 {
   "TeamBattleResults": {
-  "teams": ["Sentai","Z-Fighters"],
+    "teams": ["Sentai", "Z-Fighters"],
     "battleResult": {
       "battleWinLose": "Lose",
       "battleSettlementIndex": 0,
