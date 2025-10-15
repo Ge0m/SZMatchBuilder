@@ -225,6 +225,7 @@ body {
 .text-gray-800 { color: #1f2937; }
 .text-orange-300 { color: #fdba74; }
 .text-left { text-align: left; }
+.text-right { text-align: right; }
 .hidden { display: none; }
 .flex-1 { flex: 1 1 0%; }
 .inline-flex { display: inline-flex; }
