@@ -228,6 +228,8 @@ function extractStats(char, charMap, capsuleMap = {}, position = null) {
   const play = char.battlePlayCharacter || {};
   const count = char.battleCount || {};
   const numCount = count.battleNumCount || {};
+  const runBlastCount = count.runBlastCount || {};
+  const attackHitCount = count.attackHitCount || {};
   const originalForm = char.battlePlayCharacter?.originalCharacter?.key;
   const currentForm = play.character?.key;
   const charId = originalForm || currentForm || '';
@@ -274,6 +276,33 @@ function extractStats(char, charMap, capsuleMap = {}, position = null) {
     ).length
   };
   
+  // Parse blast counts for detailed super blast tracking
+  let spm1Count = 0;
+  let spm2Count = 0;
+  let exa1Count = 0;
+  let exa2Count = 0;
+  
+  Object.entries(runBlastCount).forEach(([key, value]) => {
+    if (key.includes('SPM1')) spm1Count += value;
+    else if (key.includes('SPM2') || key.includes('SPM3')) spm2Count += value;
+    else if (key.includes('EXA1')) exa1Count += value;
+    else if (key.includes('EXA2')) exa2Count += value;
+  });
+  
+  // Parse attack hit counts for combat performance metrics
+  let speedImpactCount = 0;
+  let speedImpactWins = 0;
+  
+  Object.entries(attackHitCount).forEach(([key, value]) => {
+    // Speed Impact triggers - these indicate speed impact usage
+    if (key.includes('actSPIMPO') || key.includes('actRI')) {
+      speedImpactCount += value;
+    }
+  });
+  
+  // Speed impact wins would be tracked separately in blastImpactWinCount if available
+  // For now, we'll use a heuristic based on speed impact count vs damage ratio
+  
   return {
     name,
     damageDone: count.givenDamage || 0,
@@ -286,17 +315,31 @@ function extractStats(char, charMap, capsuleMap = {}, position = null) {
     skillsUsed: numCount.eXACount || 0,
     kills: count.killCount || 0,
     formChangeHistory: formNames,
-    // Phase 1: Additional technique usage metrics
+    // Survival & Health metrics
     sparkingCount: numCount.sparkingCount || 0,
     chargeCount: numCount.chargeCount || 0,
     guardCount: numCount.guardCount || 0,
     shotEnergyBulletCount: numCount.shotEnergyBulletCount || 0,
     zCounterCount: numCount.zCounter || 0,
     superCounterCount: numCount.superCounterCount || 0,
-    // Phase 1: Combo performance metrics
+    revengeCounterCount: numCount.revengeCounter || 0,
+    // Special Abilities - detailed blast tracking
+    spm1Count,
+    spm2Count,
+    exa1Count,
+    exa2Count,
+    dragonDashMileage: count.dragonDashMileage || 0,
+    // Combat Performance metrics
     maxComboNum: count.maxComboNum || 0,
     maxComboDamage: count.maxComboDamage || 0,
-    // Phase 2: Position tracking
+    throwCount: numCount.throwCount || 0,
+    lightningAttackCount: numCount.lightningAttack || 0,
+    vanishingAttackCount: numCount.vanishingAttack || 0,
+    dragonHomingCount: numCount.dragonHoming || 0,
+    speedImpactCount,
+    speedImpactWins: numCount.blastImpactWinCount || 0, // Use actual wins if available
+    sparkingComboCount: numCount.sparkingCount > 0 ? count.maxComboNum || 0 : 0,
+    // Position tracking
     position: position,
     // Equipment data
     equippedCapsules,
@@ -833,15 +876,31 @@ function getAggregatedCharacterData(files, charMap, capsuleMap = {}, aiStrategie
           totalUltimates: 0,
           totalSkills: 0,
           totalKills: 0,
-          // Phase 1: New technique usage and combo stats
+          // Survival & Health metrics
+          survivalCount: 0,
           totalSparking: 0,
           totalCharges: 0,
           totalGuards: 0,
           totalEnergyBlasts: 0,
           totalZCounters: 0,
           totalSuperCounters: 0,
+          totalRevengeCounters: 0,
+          // Special Abilities - detailed blast tracking
+          totalSPM1: 0,
+          totalSPM2: 0,
+          totalEXA1: 0,
+          totalEXA2: 0,
+          totalDragonDashMileage: 0,
+          // Combat Performance metrics
           maxComboNumTotal: 0,
           maxComboDamageTotal: 0,
+          totalThrows: 0,
+          totalLightningAttacks: 0,
+          totalVanishingAttacks: 0,
+          totalDragonHoming: 0,
+          totalSpeedImpacts: 0,
+          totalSpeedImpactWins: 0,
+          totalSparkingCombo: 0,
           matchCount: 0,
           allFormsUsed: new Set(), // Track all forms used across matches
           formStats: {}, // Track per-form aggregated stats
@@ -870,15 +929,33 @@ function getAggregatedCharacterData(files, charMap, capsuleMap = {}, aiStrategie
       charData.totalUltimates += stats.ultimatesUsed;
       charData.totalSkills += stats.skillsUsed;
       charData.totalKills += stats.kills;
-      // Phase 1: New technique usage and combo stats
+      // Survival & Health metrics
+      if (stats.hPGaugeValue > 0) {
+        charData.survivalCount += 1;
+      }
       charData.totalSparking += stats.sparkingCount;
       charData.totalCharges += stats.chargeCount;
       charData.totalGuards += stats.guardCount;
       charData.totalEnergyBlasts += stats.shotEnergyBulletCount;
       charData.totalZCounters += stats.zCounterCount;
       charData.totalSuperCounters += stats.superCounterCount;
+      charData.totalRevengeCounters += stats.revengeCounterCount;
+      // Special Abilities - detailed blast tracking
+      charData.totalSPM1 += stats.spm1Count;
+      charData.totalSPM2 += stats.spm2Count;
+      charData.totalEXA1 += stats.exa1Count;
+      charData.totalEXA2 += stats.exa2Count;
+      charData.totalDragonDashMileage += stats.dragonDashMileage;
+      // Combat Performance metrics
       charData.maxComboNumTotal += stats.maxComboNum;
       charData.maxComboDamageTotal += stats.maxComboDamage;
+      charData.totalThrows += stats.throwCount;
+      charData.totalLightningAttacks += stats.lightningAttackCount;
+      charData.totalVanishingAttacks += stats.vanishingAttackCount;
+      charData.totalDragonHoming += stats.dragonHomingCount;
+      charData.totalSpeedImpacts += stats.speedImpactCount;
+      charData.totalSpeedImpactWins += stats.speedImpactWins;
+      charData.totalSparkingCombo += stats.sparkingComboCount;
       charData.matchCount += 1;
       
       // Add individual match data for meta analysis
@@ -904,8 +981,21 @@ function getAggregatedCharacterData(files, charMap, capsuleMap = {}, aiStrategie
         shotEnergyBulletCount: stats.shotEnergyBulletCount,
         zCounterCount: stats.zCounterCount,
         superCounterCount: stats.superCounterCount,
+        revengeCounterCount: stats.revengeCounterCount,
+        spm1Count: stats.spm1Count,
+        spm2Count: stats.spm2Count,
+        exa1Count: stats.exa1Count,
+        exa2Count: stats.exa2Count,
+        dragonDashMileage: stats.dragonDashMileage,
         maxComboNum: stats.maxComboNum,
-        maxComboDamage: stats.maxComboDamage
+        maxComboDamage: stats.maxComboDamage,
+        throwCount: stats.throwCount,
+        lightningAttackCount: stats.lightningAttackCount,
+        vanishingAttackCount: stats.vanishingAttackCount,
+        dragonHomingCount: stats.dragonHomingCount,
+        speedImpactCount: stats.speedImpactCount,
+        speedImpactWins: stats.speedImpactWins,
+        sparkingComboCount: stats.sparkingComboCount
       });
       
       // Track all forms used
@@ -1064,15 +1154,31 @@ function getAggregatedCharacterData(files, charMap, capsuleMap = {}, aiStrategie
       avgUltimates: Math.round((char.totalUltimates / char.matchCount) * 10) / 10,
       avgSkills: Math.round((char.totalSkills / char.matchCount) * 10) / 10,
       avgKills: Math.round((char.totalKills / char.matchCount) * 10) / 10,
-      // Phase 1: New technique usage and combo averages
+      // Survival & Health averages
+      survivalRate: Math.round((char.survivalCount / char.matchCount) * 1000) / 10, // % of matches survived
       avgSparking: Math.round((char.totalSparking / char.matchCount) * 10) / 10,
       avgCharges: Math.round((char.totalCharges / char.matchCount) * 10) / 10,
       avgGuards: Math.round((char.totalGuards / char.matchCount) * 10) / 10,
       avgEnergyBlasts: Math.round((char.totalEnergyBlasts / char.matchCount) * 10) / 10,
       avgZCounters: Math.round((char.totalZCounters / char.matchCount) * 10) / 10,
       avgSuperCounters: Math.round((char.totalSuperCounters / char.matchCount) * 10) / 10,
+      avgRevengeCounters: Math.round((char.totalRevengeCounters / char.matchCount) * 10) / 10,
+      // Special Abilities - detailed blast averages
+      avgSPM1: Math.round((char.totalSPM1 / char.matchCount) * 10) / 10,
+      avgSPM2: Math.round((char.totalSPM2 / char.matchCount) * 10) / 10,
+      avgEXA1: Math.round((char.totalEXA1 / char.matchCount) * 10) / 10,
+      avgEXA2: Math.round((char.totalEXA2 / char.matchCount) * 10) / 10,
+      avgDragonDashMileage: Math.round((char.totalDragonDashMileage / char.matchCount) * 10) / 10,
+      // Combat Performance averages
       avgMaxCombo: Math.round((char.maxComboNumTotal / char.matchCount) * 10) / 10,
-      avgMaxComboDamage: Math.round(char.maxComboDamageTotal / char.matchCount)
+      avgMaxComboDamage: Math.round(char.maxComboDamageTotal / char.matchCount),
+      avgThrows: Math.round((char.totalThrows / char.matchCount) * 10) / 10,
+      avgLightningAttacks: Math.round((char.totalLightningAttacks / char.matchCount) * 10) / 10,
+      avgVanishingAttacks: Math.round((char.totalVanishingAttacks / char.matchCount) * 10) / 10,
+      avgDragonHoming: Math.round((char.totalDragonHoming / char.matchCount) * 10) / 10,
+      avgSpeedImpacts: Math.round((char.totalSpeedImpacts / char.matchCount) * 10) / 10,
+      avgSpeedImpactWins: Math.round((char.totalSpeedImpactWins / char.matchCount) * 10) / 10,
+      avgSparkingCombo: Math.round((char.totalSparkingCombo / char.matchCount) * 10) / 10
     };
   }).map(char => {
     // Calculate combat performance score
@@ -2957,159 +3063,232 @@ export default function App() {
                     
                     {expanded && (
                       <div className={`mt-6 pt-6 border-t ${darkMode ? 'border-gray-600' : 'border-gray-200'}`}>
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                          <div className="grid grid-cols-1 sm:grid-cols-2">
-                            {/* Overall Performance Score */}
-                            <div className={`rounded-lg p-4 mb-3 ${darkMode ? 'bg-gray-700' : 'bg-white'}`}>
-                              <div className="flex items-center gap-2 mb-3">
-                                <Star className={`w-5 h-5 ${darkMode ? 'text-yellow-400' : 'text-yellow-600'}`} />
-                                <h4 className={`font-bold ${darkMode ? 'text-white' : 'text-gray-800'}`}>Overall Performance Score</h4>
-                                <div className="relative group">
-                                  {/* Tooltip temporarily hidden */}
+                        <div className="grid grid-cols-1 gap-4">
+                          {/* Overall Performance Score */}
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                            <div className="grid grid-cols-1 sm:grid-cols-1 gap-4">
+                              <div className={`rounded-lg p-3 ${darkMode ? 'bg-gray-700' : 'bg-white'}`}>
+                                <div className="flex items-center gap-2 mb-2">
+                                  <Star className={`w-5 h-5 ${darkMode ? 'text-yellow-400' : 'text-yellow-600'}`} />
+                                  <h4 className={`text-sm font-bold ${darkMode ? 'text-white' : 'text-gray-800'}`}>Overall Performance Score</h4>
+                                </div>
+                                <div className="text-center">
+                                  {(() => {
+                                    const level = getPerformanceLevel(char.combatPerformanceScore, combatPerformanceScores);
+                                    let colorClass;
+                                    switch (level) {
+                                      case 'excellent':
+                                        colorClass = 'text-green-600';
+                                        break;
+                                      case 'good':
+                                        colorClass = 'text-blue-500';
+                                        break;
+                                      case 'average':
+                                        colorClass = 'text-yellow-500';
+                                        break;
+                                      case 'below-average':
+                                        colorClass = 'text-orange-600';
+                                        break;
+                                      default:
+                                        colorClass = 'text-red-600';
+                                    }
+                                    return (
+                                      <div className={`text-4xl font-bold mb-2 ${colorClass}`}>
+                                        {Math.round(char.combatPerformanceScore)}
+                                      </div>
+                                    );
+                                  })()}
+                                  <div className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
+                                    Based on {char.matchCount} match{char.matchCount !== 1 ? 'es' : ''}
+                                  </div>
+                                  <div className="grid grid-cols-2 gap-2 mt-2">
+                                    {char.primaryTeam && (
+                                      <div className={`text-left text-xs ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
+                                        <span className={`font-semibold ${darkMode ? 'text-blue-400' : 'text-blue-600'}`}>Team:</span> {char.primaryTeam}
+                                      </div>
+                                    )}
+                                    {char.primaryAIStrategy && (
+                                      <div className={`text-right text-xs ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
+                                        <span className={`font-semibold ${darkMode ? 'text-purple-400' : 'text-purple-600'}`}>AI:</span> {char.primaryAIStrategy}
+                                      </div>
+                                    )}
+                                  </div>
                                 </div>
                               </div>
-                              <div className="text-center">
-                                {(() => {
-                                  const level = getPerformanceLevel(char.combatPerformanceScore, combatPerformanceScores);
-                                  let colorClass;
-                                  switch (level) {
-                                    case 'excellent':
-                                      colorClass = 'text-green-600';
-                                      break;
-                                    case 'good':
-                                      colorClass = 'text-blue-500';
-                                      break;
-                                    case 'average':
-                                      colorClass = 'text-yellow-500';
-                                      break;
-                                    case 'below-average':
-                                      colorClass = 'text-orange-600';
-                                      break;
-                                    default:
-                                      colorClass = 'text-red-600';
-                                  }
-                                  return (
-                                    <div className={`text-4xl font-bold mb-2 ${colorClass}`}>
-                                      {Math.round(char.combatPerformanceScore)}
-                                    </div>
-                                  );
-                                })()}
-                                <div className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
-                                  Based on {char.matchCount} match{char.matchCount !== 1 ? 'es' : ''}
+                              {/* Combat Performance - Full Width */}
+                              <div className={`rounded-lg p-3 ${darkMode ? 'bg-gray-700' : 'bg-white'}`}>
+                                <div className="flex items-center gap-2 mb-2">
+                                  <Swords className={`w-5 h-5 ${darkMode ? 'text-red-400' : 'text-red-600'}`} />
+                                  <h4 className={`text-sm font-bold ${darkMode ? 'text-white' : 'text-gray-800'}`}>Combat Performance</h4>
                                 </div>
-                                <div className="grid grid-cols-2 sm:grid-cols-1">
-                                  {char.primaryTeam && (
-                                    <div className={`text-left text-xs mt-2 ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
-                                      <span className={`font-semibold ${darkMode ? 'text-blue-400' : 'text-blue-600'}`}>Team:</span> {char.primaryTeam}
+                                <div className="space-y-2 text-sm mb-3">
+                                  <div className="flex justify-between">
+                                    <span className={`${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>Damage Done:</span>
+                                    <div className="flex items-center gap-2">
+                                      <strong className={`${darkMode ? 'text-white' : 'text-gray-900'}`}>{char.avgDamage.toLocaleString()}</strong>
+                                      <PerformanceIndicator value={char.avgDamage} allValues={allAvgDamageValues} darkMode={darkMode} />
                                     </div>
-                                  )}
-                                  {char.primaryAIStrategy && (
-                                    <div className={`text-right text-xs mt-1 ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
-                                      <span className={`font-semibold ${darkMode ? 'text-purple-400' : 'text-purple-600'}`}>AI:</span> {char.primaryAIStrategy}
+                                  </div>
+                                  <div className="flex justify-between">
+                                    <span className={`${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>Damage Taken:</span>
+                                    <div className="flex items-center gap-2">
+                                      <strong className={`${darkMode ? 'text-white' : 'text-gray-900'}`}>{char.avgTaken.toLocaleString()}</strong>
+                                      <PerformanceIndicator value={char.avgTaken} allValues={allAvgTakenValues} isInverse={true} darkMode={darkMode} />
                                     </div>
-                                  )}
+                                  </div>
+                                  <div className="flex justify-between">
+                                    <span className={`${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>Damage Over Time:</span>
+                                    <div className="flex items-center gap-2">
+                                      <strong className={`${darkMode ? 'text-white' : 'text-gray-900'}`}>{Math.round(char.avgDamage / char.avgBattleTime).toLocaleString()}/sec</strong>
+                                      <PerformanceIndicator value={char.avgDamage / char.avgBattleTime} allValues={filteredAggregatedData.map(c => c.avgDamage / c.avgBattleTime)} darkMode={darkMode} />
+                                    </div>
+                                  </div>
+                                  <div className="flex justify-between">
+                                    <span className={`${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>Damage Efficiency:</span>
+                                    <div className="flex items-center gap-2">
+                                      <strong className={`${darkMode ? 'text-white' : 'text-gray-900'}`}>{(char.avgDamage / Math.max(char.avgTaken, 1)).toFixed(2)}x</strong>
+                                      <PerformanceIndicator value={char.avgDamage / Math.max(char.avgTaken, 1)} allValues={filteredAggregatedData.map(c => c.avgDamage / Math.max(c.avgTaken, 1))} darkMode={darkMode} />
+                                    </div>
+                                  </div>
+                                </div>
+                                <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-xs pt-2 border-t border-gray-600">
+                                  <div className="flex justify-between">
+                                    <span className={`${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>Throws:</span>
+                                    <strong className={`${darkMode ? 'text-white' : 'text-gray-900'}`}>{char.avgThrows}</strong>
+                                  </div>
+                                  <div className="flex justify-between">
+                                    <span className={`${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>Vanishing Attacks:</span>
+                                    <strong className={`${darkMode ? 'text-white' : 'text-gray-900'}`}>{char.avgVanishingAttacks}</strong>
+                                  </div>
+                                  <div className="flex justify-between">
+                                    <span className={`${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>Dragon Homings:</span>
+                                    <strong className={`${darkMode ? 'text-white' : 'text-gray-900'}`}>{char.avgDragonHoming}</strong>
+                                  </div>
+                                  <div className="flex justify-between">
+                                    <span className={`${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>Lightning Attacks:</span>
+                                    <strong className={`${darkMode ? 'text-white' : 'text-gray-900'}`}>{char.avgLightningAttacks}</strong>
+                                  </div>
+                                  <div className="flex justify-between">
+                                    <span className={`${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>Speed Impacts:</span>
+                                    <strong className={`${darkMode ? 'text-white' : 'text-gray-900'}`}>{char.avgSpeedImpacts}</strong>
+                                  </div>
+                                  <div className="flex justify-between">
+                                    <span className={`${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>Speed Impact Wins:</span>
+                                    <strong className={`${darkMode ? 'text-white' : 'text-gray-900'}`}>{char.avgSpeedImpactWins}</strong>
+                                  </div>
+                                  <div className="flex justify-between">
+                                    <span className={`${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>Max Combo Hits:</span>
+                                    <strong className={`${darkMode ? 'text-white' : 'text-gray-900'}`}>{char.avgMaxCombo}</strong>
+                                  </div>
+                                  <div className="flex justify-between">
+                                    <span className={`${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>Max Combo Damage:</span>
+                                    <strong className={`${darkMode ? 'text-white' : 'text-gray-900'}`}>{char.avgMaxComboDamage.toLocaleString()}</strong>
+                                  </div>
+                                  <div className="flex justify-between">
+                                    <span className={`${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>Sparking Combo Hits:</span>
+                                    <strong className={`${darkMode ? 'text-white' : 'text-gray-900'}`}>{char.avgSparkingCombo}</strong>
+                                  </div>
+                                  <div className="flex justify-between">
+                                    <span className={`${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>Avg Kills:</span>
+                                    <strong className={`${darkMode ? 'text-white' : 'text-gray-900'}`}>{char.avgKills}</strong>
+                                  </div>
                                 </div>
                               </div>
                             </div>
-                            {/* Combat Performance */}
-                            <div className={`rounded-lg p-4 ${darkMode ? 'bg-gray-700' : 'bg-white'}`}>
-                              <div className="flex items-center gap-2 mb-3">
-                                <Swords className={`w-5 h-5 ${darkMode ? 'text-red-400' : 'text-red-600'}`} />
-                                <h4 className={`font-bold ${darkMode ? 'text-white' : 'text-gray-800'}`}>Combat Performance</h4>
-                              </div>
-                              <div className="space-y-3 text-sm">
-                                <div className="flex justify-between">
-                                  <span className={`${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>Avg Damage per Match:</span>
-                                  <div className="flex items-center gap-2">
-                                    <strong className={`${darkMode ? 'text-white' : 'text-gray-900'}`}>{char.avgDamage.toLocaleString()}</strong>
-                                    <PerformanceIndicator value={char.avgDamage} allValues={allAvgDamageValues} darkMode={darkMode} />
+                            {/* Survival & Health and Special Abilities in a nested grid */}
+                            <div className="grid grid-cols-1 sm:grid-cols-1 gap-4">
+                              {/* Survival & Health */}
+                              <div className={`rounded-lg p-3 ${darkMode ? 'bg-gray-700' : 'bg-white'}`}>
+                                <div className="flex items-center gap-2 mb-2">
+                                  <Heart className={`w-5 h-5 ${darkMode ? 'text-green-400' : 'text-green-600'}`} />
+                                  <h4 className={`text-sm font-bold ${darkMode ? 'text-white' : 'text-gray-800'}`}>Survival & Health</h4>
+                                </div>
+                                <div className="space-y-2 text-sm mb-2">
+                                  <div className="flex justify-between">
+                                    <span className={`${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>Max Health:</span>
+                                    <strong className={`${darkMode ? 'text-white' : 'text-gray-900'}`}>{char.avgHPGaugeValueMax.toLocaleString()}</strong>
+                                  </div>
+                                  <div className="flex justify-between">
+                                    <span className={`${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>Health Remaining:</span>
+                                    <strong className={`${darkMode ? 'text-white' : 'text-gray-900'}`}>{char.avgHealth.toLocaleString()}</strong>
+                                  </div>
+                                  <div className="flex justify-between">
+                                    <span className={`${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>Survival Rate:</span>
+                                    <strong className={`${darkMode ? 'text-white' : 'text-gray-900'}`}>{char.survivalRate.toFixed(1)}%</strong>
                                   </div>
                                 </div>
-                                <div className="flex justify-between">
-                                  <span className={`${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>Avg Damage Taken:</span>
-                                  <div className="flex items-center gap-2">
-                                    <strong className={`${darkMode ? 'text-white' : 'text-gray-900'}`}>{char.avgTaken.toLocaleString()}</strong>
-                                    <PerformanceIndicator value={char.avgTaken} allValues={allAvgTakenValues} isInverse={true} darkMode={darkMode} />
+                                <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 text-xs pt-2 border-t border-gray-600">
+                                  <div className="flex justify-between">
+                                    <span className={`${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>Guards:</span>
+                                    <strong className={`${darkMode ? 'text-white' : 'text-gray-900'}`}>{char.avgGuards}</strong>
                                   </div>
-                                </div>
-                                <div className="flex justify-between">
-                                  <span className={`${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>Damage Over Time:</span>
-                                  <div className="flex items-center gap-2">
-                                    <strong className={`${darkMode ? 'text-white' : 'text-gray-900'}`}>{Math.round(char.avgDamage / char.avgBattleTime).toLocaleString()}/sec</strong>
-                                    <PerformanceIndicator value={char.avgDamage / char.avgBattleTime} allValues={filteredAggregatedData.map(c => c.avgDamage / c.avgBattleTime)} darkMode={darkMode} />
+                                  <div className="flex justify-between">
+                                    <span className={`${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>Super Counters:</span>
+                                    <strong className={`${darkMode ? 'text-white' : 'text-gray-900'}`}>{char.avgSuperCounters}</strong>
                                   </div>
-                                </div>
-                                <div className="flex justify-between">
-                                  <span className={`${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>Damage Efficiency:</span>
-                                  <div className="flex items-center gap-2">
-                                    <strong className={`${darkMode ? 'text-white' : 'text-gray-900'}`}>{(char.avgDamage / Math.max(char.avgTaken, 1)).toFixed(2)}x</strong>
-                                    <PerformanceIndicator value={char.avgDamage / Math.max(char.avgTaken, 1)} allValues={filteredAggregatedData.map(c => c.avgDamage / Math.max(c.avgTaken, 1))} darkMode={darkMode} />
+                                  <div className="flex justify-between">
+                                    <span className={`${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>Revenge Counters:</span>
+                                    <strong className={`${darkMode ? 'text-white' : 'text-gray-900'}`}>{char.avgRevengeCounters}</strong>
+                                  </div>
+                                  <div className="flex justify-between">
+                                    <span className={`${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>Z-Counters:</span>
+                                    <strong className={`${darkMode ? 'text-white' : 'text-gray-900'}`}>{char.avgZCounters}</strong>
                                   </div>
                                 </div>
                               </div>
-                            </div>
-                          </div>  
-                          {/* Survival & Health and Special Abilities in a nested grid */}
-                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
-                            {/* Survival & Health */}
-                            <div className={`rounded-lg p-4 ${darkMode ? 'bg-gray-800' : 'bg-white'}`}>
-                              <div className="flex items-center gap-2 mb-3">
-                                <Heart className={`w-5 h-5 ${darkMode ? 'text-green-400' : 'text-green-600'}`} />
-                                <h4 className={`font-bold ${darkMode ? 'text-white' : 'text-gray-800'}`}>Survival & Health</h4>
-                              </div>
-                              <div className="space-y-3 text-sm">
-                                <div className="flex justify-between">
-                                  <span className={`${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>Avg HP Remaining:</span>
-                                  <strong className={`${darkMode ? 'text-white' : 'text-gray-900'}`}>{char.avgHealth.toLocaleString()}</strong>
-                                </div>
-                                <div className="flex justify-between">
-                                  <span className={`${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>Survival Rate:</span>
-                                  <strong className={`${darkMode ? 'text-white' : 'text-gray-900'}`}>{((char.avgHealth / 40000) * 100).toFixed(1)}%</strong>
-                                </div>
-                                <div className="flex justify-between">
-                                  <span className={`${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>Total Eliminations:</span>
-                                  <strong className={`flex items-center gap-1 ${darkMode ? 'text-white' : 'text-gray-900'}`}>
-                                    <Trophy className={`w-4 h-4 ${darkMode ? 'text-yellow-400' : 'text-yellow-500'}`} />
-                                    {char.totalKills}
-                                  </strong>
-                                </div>
-                                <div className="flex justify-between">
-                                  <span className={`${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>Avg Kills per Match:</span>
-                                  <strong className={`${darkMode ? 'text-white' : 'text-gray-900'}`}>{char.avgKills}</strong>
-                                </div>
-                              </div>
-                            </div>
 
-                            {/* Special Abilities */}
-                            <div className={`rounded-lg p-4 ${darkMode ? 'bg-gray-800' : 'bg-white'}`}>
-                              <div className="flex items-center gap-2 mb-3">
-                                <Zap className={`w-5 h-5 ${darkMode ? 'text-purple-400' : 'text-purple-600'}`} />
-                                <h4 className={`font-bold ${darkMode ? 'text-white' : 'text-gray-800'}`}>Special Abilities</h4>
-                              </div>
-                              <div className="space-y-3 text-sm">
-                                <div className="flex justify-between">
-                                  <span className={`${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>Total Blast Skills:</span>
-                                  <strong className={`${darkMode ? 'text-white' : 'text-gray-900'}`}>{char.totalSpecial}</strong>
+                              {/* Special Abilities */}
+                              <div className={`rounded-lg p-3 ${darkMode ? 'bg-gray-700' : 'bg-white'}`}>
+                                <div className="flex items-center gap-2 mb-2">
+                                  <Zap className={`w-5 h-5 ${darkMode ? 'text-purple-400' : 'text-purple-600'}`} />
+                                  <h4 className={`text-sm font-bold ${darkMode ? 'text-white' : 'text-gray-800'}`}>Special Abilities</h4>
                                 </div>
-                                <div className="flex justify-between">
-                                  <span className={`${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>Avg Blasts per Match:</span>
-                                  <strong className={`${darkMode ? 'text-white' : 'text-gray-900'}`}>{char.avgSpecial}</strong>
+                                <div className="space-y-2 text-sm mb-2">
+                                  <div className="flex justify-between">
+                                    <span className={`${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>Super 1 Blasts:</span>
+                                    <strong className={`${darkMode ? 'text-white' : 'text-gray-900'}`}>{char.avgSPM1}</strong>
+                                  </div>
+                                  <div className="flex justify-between">
+                                    <span className={`${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>Super 2 Blasts:</span>
+                                    <strong className={`${darkMode ? 'text-white' : 'text-gray-900'}`}>{char.avgSPM2}</strong>
+                                  </div>
+                                  <div className="flex justify-between">
+                                    <span className={`${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>Ultimate Blasts:</span>
+                                    <strong className={`${darkMode ? 'text-white' : 'text-gray-900'}`}>{char.avgUltimates}</strong>
+                                  </div>
                                 </div>
-                                <div className="flex justify-between">
-                                  <span className={`${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>Total Ultimates:</span>
-                                  <strong className={`${darkMode ? 'text-white' : 'text-gray-900'}`}>{char.totalUltimates}</strong>
-                                </div>
-                                <div className="flex justify-between">
-                                  <span className={`${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>Avg Ultimates per Match:</span>
-                                  <strong className={`${darkMode ? 'text-white' : 'text-gray-900'}`}>{char.avgUltimates}</strong>
+                                <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 text-xs pt-2 border-t border-gray-600">
+                                  <div className="flex justify-between">
+                                    <span className={`${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>Skill 1 Usage:</span>
+                                    <strong className={`${darkMode ? 'text-white' : 'text-gray-900'}`}>{char.avgEXA1}</strong>
+                                  </div>
+                                  <div className="flex justify-between">
+                                    <span className={`${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>Skill 2 Usage:</span>
+                                    <strong className={`${darkMode ? 'text-white' : 'text-gray-900'}`}>{char.avgEXA2}</strong>
+                                  </div>
+                                  <div className="flex justify-between">
+                                    <span className={`${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>Charges:</span>
+                                    <strong className={`${darkMode ? 'text-white' : 'text-gray-900'}`}>{char.avgCharges}</strong>
+                                  </div>
+                                  <div className="flex justify-between">
+                                    <span className={`${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>Sparkings:</span>
+                                    <strong className={`${darkMode ? 'text-white' : 'text-gray-900'}`}>{char.avgSparking}</strong>
+                                  </div>
+                                  <div className="flex justify-between">
+                                    <span className={`${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>Ki Blasts:</span>
+                                    <strong className={`${darkMode ? 'text-white' : 'text-gray-900'}`}>{char.avgEnergyBlasts}</strong>
+                                  </div>
+                                  <div className="flex justify-between">
+                                    <span className={`${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>Dragon Dash Mileage:</span>
+                                    <strong className={`${darkMode ? 'text-white' : 'text-gray-900'}`}>{char.avgDragonDashMileage}</strong>
+                                  </div>
                                 </div>
                               </div>
                             </div>
                           </div>
-
                           {/* Forms & Transformations */}
                           {char.hasMultipleForms && (
-                            <div className={`rounded-lg p-3 md:col-span-2 ${
+                            <div className={`rounded-lg p-3 ${
                               darkMode 
                                 ? 'bg-yellow-900/20 border border-yellow-700' 
                                 : 'bg-yellow-50 border border-yellow-200'
