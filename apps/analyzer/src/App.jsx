@@ -2613,13 +2613,6 @@ export default function App() {
                 {/* Search Bar */}
                 {/* Character Filter */}
                 <div className="mb-4">
-                  <div className={`text-sm font-medium mb-2 flex items-center gap-2 ${
-                    darkMode ? 'text-gray-300' : 'text-gray-700'
-                  }`}>
-                    <Search className="w-4 h-4" />
-                    Characters
-                  </div>
-                  
                   {/* Selected Characters as Chips */}
                   {selectedCharacters.length > 0 && (
                     <div className="flex flex-wrap gap-2 mb-2">
