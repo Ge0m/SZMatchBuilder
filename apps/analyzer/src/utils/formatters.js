@@ -22,13 +22,6 @@ export function formatPercentage(value, total) {
   return `${Math.round((value / total) * 100)}%`;
 }
 
-export function getPerformanceLevel(value, max) {
-  const percentage = (value / max) * 100;
-  if (percentage >= 80) return 'excellent';
-  if (percentage >= 60) return 'good';
-  if (percentage >= 40) return 'average';
-  return 'below-average';
-}
 
 export function sortData(data, sortConfig) {
   if (!sortConfig.key) return data;
