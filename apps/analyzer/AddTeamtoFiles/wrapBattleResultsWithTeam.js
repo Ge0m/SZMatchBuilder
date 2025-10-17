@@ -14,10 +14,11 @@ function wrapData(data, teams) {
     return data;
   }
 
+  // Wrap existing data directly into TeamBattleResults with teams array
   return {
     TeamBattleResults: {
       teams: teams,
-      battleResults: data
+      ...data
     }
   };
 }

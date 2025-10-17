@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import './App.css';
 import { 
   Trophy, 
@@ -1955,6 +1955,13 @@ export default function App() {
       if (teamBattleResults.battleResult) {
         return teamBattleResults.battleResult;
       }
+      if (teamBattleResults.BattleResults) {
+        return teamBattleResults.BattleResults;
+      }
+      // Check if data is directly in TeamBattleResults
+      if (teamBattleResults.battleWinLose && teamBattleResults.characterRecord) {
+        return teamBattleResults;
+      }
     }
 
     // Check if current object has BattleResults
@@ -1986,9 +1993,17 @@ export default function App() {
     // Handle TeamBattleResults format (current BR_Data structure)
     if (fileContent.TeamBattleResults && typeof fileContent.TeamBattleResults === 'object') {
       const teamBattleResults = fileContent.TeamBattleResults;
+      // Check for both battleResult (lowercase) and BattleResults (capital)
       if (teamBattleResults.battleResult) {
         battleWinLose = teamBattleResults.battleResult.battleWinLose;
         characterRecord = teamBattleResults.battleResult.characterRecord;
+      } else if (teamBattleResults.BattleResults) {
+        battleWinLose = teamBattleResults.BattleResults.battleWinLose;
+        characterRecord = teamBattleResults.BattleResults.characterRecord;
+      } else if (teamBattleResults.battleWinLose && teamBattleResults.characterRecord) {
+        // Direct properties in TeamBattleResults (new wrapper format)
+        battleWinLose = teamBattleResults.battleWinLose;
+        characterRecord = teamBattleResults.characterRecord;
       }
     }
     // Handle new format with teams array at the top
@@ -2318,72 +2333,110 @@ export default function App() {
                   Select a test data file to analyze:
                 </label>
                 <div className="relative">
-                  <input
-                    type="text"
-                    role="combobox"
-                    aria-expanded={comboboxOpen}
-                    aria-controls="file-listbox"
-                    aria-autocomplete="list"
-                    value={comboboxInput}
-                    onChange={(e) => {
-                      setComboboxInput(e.target.value);
-                      setComboboxOpen(true);
-                      setComboboxHighlightedIndex(-1);
-                    }}
-                    onFocus={() => setComboboxOpen(true)}
-                    onBlur={() => setTimeout(() => setComboboxOpen(false), 150)}
-                    onKeyDown={(e) => {
-                      const filtered = fileNames.filter(f => f.toLowerCase().includes(comboboxInput.toLowerCase()));
-                      if (e.key === 'ArrowDown') {
-                        e.preventDefault();
-                        setComboboxHighlightedIndex(i => Math.min(i + 1, filtered.length - 1));
+                  <div className="relative">
+                    <Search className={`absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 pointer-events-none ${darkMode ? 'text-gray-400' : 'text-gray-500'}`} />
+                    <input
+                      type="text"
+                      role="combobox"
+                      aria-expanded={comboboxOpen}
+                      aria-controls="file-listbox"
+                      aria-autocomplete="list"
+                      value={comboboxInput}
+                      onChange={(e) => {
+                        setComboboxInput(e.target.value);
                         setComboboxOpen(true);
-                      } else if (e.key === 'ArrowUp') {
-                        e.preventDefault();
-                        setComboboxHighlightedIndex(i => Math.max(i - 1, 0));
-                        setComboboxOpen(true);
-                      } else if (e.key === 'Enter') {
-                        e.preventDefault();
-                        const choice = filtered[comboboxHighlightedIndex] || filtered[0];
-                        if (choice) {
-                          setComboboxInput(choice);
-                          handleSelect(choice);
+                        setComboboxHighlightedIndex(-1);
+                      }}
+                      onFocus={() => setComboboxOpen(true)}
+                      onBlur={() => setTimeout(() => setComboboxOpen(false), 150)}
+                      onKeyDown={(e) => {
+                        const filtered = fileNames.filter(f => f.toLowerCase().includes(comboboxInput.toLowerCase()));
+                        if (filtered.length === 0) return; // No results to navigate
+                        
+                        if (e.key === 'ArrowDown') {
+                          e.preventDefault();
+                          setComboboxHighlightedIndex(i => {
+                            const next = i + 1;
+                            return next >= filtered.length ? 0 : next; // Wrap to top
+                          });
+                          setComboboxOpen(true);
+                        } else if (e.key === 'ArrowUp') {
+                          e.preventDefault();
+                          setComboboxHighlightedIndex(i => {
+                            const prev = i - 1;
+                            return prev < 0 ? filtered.length - 1 : prev; // Wrap to bottom
+                          });
+                          setComboboxOpen(true);
+                        } else if (e.key === 'Enter') {
+                          e.preventDefault();
+                          const choice = comboboxHighlightedIndex >= 0 ? filtered[comboboxHighlightedIndex] : filtered[0];
+                          if (choice) {
+                            setComboboxInput(choice);
+                            handleSelect(choice);
+                            setComboboxOpen(false);
+                            setComboboxHighlightedIndex(-1);
+                          }
+                        } else if (e.key === 'Escape') {
+                          e.preventDefault();
                           setComboboxOpen(false);
+                          setComboboxHighlightedIndex(-1);
                         }
-                      } else if (e.key === 'Escape') {
-                        setComboboxOpen(false);
-                      }
-                    }}
-                    placeholder="Choose a battle result file..."
-                    className={`w-full p-3 border rounded-lg focus:ring-2 focus:ring-blue-500 ${
-                      darkMode 
-                        ? 'bg-gray-800 border-gray-600 text-white focus:border-blue-400' 
-                        : 'bg-white border-gray-300 text-gray-900 focus:border-blue-500'
-                    }`}
-                  />
+                      }}
+                      placeholder="Search or choose a battle result file..."
+                      className={`w-full pl-10 pr-10 py-3 border rounded-lg focus:ring-2 focus:ring-blue-500 ${
+                        darkMode 
+                          ? 'bg-gray-800 border-gray-600 text-white focus:border-blue-400 placeholder-gray-500' 
+                          : 'bg-white border-gray-300 text-gray-900 focus:border-blue-500 placeholder-gray-400'
+                      }`}
+                    />
+                    {comboboxInput && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setComboboxInput('');
+                          setComboboxHighlightedIndex(-1);
+                          setSelectedFile(null);
+                          setFileContent(null);
+                        }}
+                        className={`absolute right-3 top-1/2 -translate-y-1/2 p-1 rounded hover:bg-opacity-10 ${darkMode ? 'text-gray-200 bg-gray-800 hover:text-gray-300 hover:bg-gray-700' : 'text-gray-500 hover:text-gray-700 hover:bg-black'}`}
+                      >
+                        <X className="w-4 h-4" />
+                      </button>
+                    )}
+                  </div>
 
-                  {comboboxOpen && (
-                    <ul
-                      id="file-listbox"
-                      role="listbox"
-                      className={`absolute z-20 mt-1 w-full max-h-48 overflow-auto rounded-md border ${darkMode ? 'bg-gray-800 border-gray-600' : 'bg-white border-gray-200'}`}
-                    >
-                      {fileNames.filter(f => f.toLowerCase().includes(comboboxInput.toLowerCase())).map((file, idx) => (
-                        <li
-                          key={file}
-                          role="option"
-                          aria-selected={selectedFile === file}
-                          onMouseDown={(ev) => { ev.preventDefault(); setComboboxInput(file); handleSelect(file); setComboboxOpen(false); }}
-                          onMouseEnter={() => setComboboxHighlightedIndex(idx)}
-                          className={`px-3 py-2 cursor-pointer truncate ${
-                            comboboxHighlightedIndex === idx ? (darkMode ? 'bg-gray-700' : 'bg-gray-100') : ''
-                          } ${selectedFile === file ? 'font-semibold' : ''}`}
-                        >
-                          {file}
-                        </li>
-                      ))}
-                    </ul>
-                  )}
+                  {comboboxOpen && (() => {
+                    const filtered = fileNames.filter(f => f.toLowerCase().includes(comboboxInput.toLowerCase()));
+                    return (
+                      <ul
+                        id="file-listbox"
+                        role="listbox"
+                        style={{ listStyleType: 'none', padding: 0, margin: 0 }}
+                        className={`absolute z-20 mt-1 w-full max-h-48 overflow-auto rounded-lg border shadow-lg text-sm ${darkMode ? 'bg-gray-800 border-gray-600 text-gray-100' : 'bg-white border-gray-200'}`}
+                      >
+                        {filtered.length === 0 ? (
+                          <li className={`px-3 py-2 text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                            No files found
+                          </li>
+                        ) : (
+                          filtered.map((file, idx) => (
+                            <li
+                              key={file}
+                              role="option"
+                              aria-selected={selectedFile === file}
+                              onMouseDown={(ev) => { ev.preventDefault(); setComboboxInput(file); handleSelect(file); setComboboxOpen(false); }}
+                              onMouseEnter={() => setComboboxHighlightedIndex(idx)}
+                              className={`px-3 py-2 cursor-pointer truncate transition-colors ${
+                                comboboxHighlightedIndex === idx ? (darkMode ? 'bg-gray-700' : 'bg-gray-100') : ''
+                              } ${selectedFile === file ? (darkMode ? 'text-blue-400 font-semibold' : 'text-blue-600 font-semibold') : ''}`}
+                            >
+                              {file}
+                            </li>
+                          ))
+                        )}
+                      </ul>
+                    );
+                  })()}
                 </div>
               </div>
             )}
