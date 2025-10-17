@@ -308,7 +308,7 @@ const ExportManager = ({
           disabled={isExporting}
           className={`w-full flex items-center justify-center gap-2 px-4 py-3 rounded-md font-medium transition-colors ${
             darkMode
-              ? 'bg-green-600 text-white hover:bg-green-700 disabled:bg-gray-600'
+              ? 'bg-green-700 text-white hover:bg-green-800 disabled:bg-gray-600'
               : 'bg-green-500 text-white hover:bg-green-600 disabled:bg-gray-400'
           }`}
         >

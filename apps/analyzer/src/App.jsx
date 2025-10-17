@@ -27,20 +27,25 @@ import {
   Search,
   X,
   ArrowUpDown,
-  Filter
+  Filter,
+  Download
 } from 'lucide-react';
 
 // Import new components
 import DataTable from './components/DataTable.jsx';
-import ExportManager from './components/ExportManager.jsx';
 import { 
-  getCharacterTableConfig, 
+  getCharacterTableConfig,
+  getCharacterAveragesTableConfig,
+  getMatchDetailsTableConfig,
   getPositionTableConfig, 
   getMetaTableConfig,
   prepareCharacterData,
+  prepareCharacterAveragesData,
+  prepareMatchDetailsData,
   preparePositionData,
   prepareMetaData
 } from './components/TableConfigs.jsx';
+import { exportToExcel } from './utils/excelExport.js';
 
 // Dynamically import all JSON files in BR_Data
 const dataFiles = import.meta.glob('../BR_Data/*.json', { eager: true });
@@ -242,38 +247,53 @@ function extractStats(char, charMap, capsuleMap = {}, position = null) {
     formNames = forms.map(f => charMap[f] || f).join(', ');
   }
   
-  // Equipment analysis
+  // Equipment analysis - filter to ONLY capsules (00_0_XXXX pattern)
   const equipItems = play.equipItem || [];
   const equippedCapsules = equipItems
     .map(item => item.key)
-    .filter(Boolean)
-    .filter(key => capsuleMap[key]) // Only include items that exist in our filtered capsuleMap
+    .filter(key => key && key.startsWith('00_0_')) // Only include actual capsules
+    .filter(key => capsuleMap[key]) // Only include capsules in our reference data
     .map(key => ({
       id: key,
+      name: capsuleMap[key].name,
       capsule: capsuleMap[key]
     }));
   
   const totalCapsuleCost = equippedCapsules.reduce((sum, item) => sum + (item.capsule.cost || 0), 0);
   
-  // Categorize capsules by type
+  // Categorize capsules by type based on their effect
   const capsuleTypes = {
-    damage: equippedCapsules.filter(item => 
-      item.capsule.name?.toLowerCase().includes('attack') || 
-      item.capsule.name?.toLowerCase().includes('damage') ||
-      item.capsule.name?.toLowerCase().includes('blast')
-    ).length,
-    defensive: equippedCapsules.filter(item => 
-      item.capsule.name?.toLowerCase().includes('guard') || 
-      item.capsule.name?.toLowerCase().includes('defense') ||
-      item.capsule.name?.toLowerCase().includes('body') ||
-      item.capsule.name?.toLowerCase().includes('training')
-    ).length,
-    utility: equippedCapsules.filter(item => 
-      item.capsule.name?.toLowerCase().includes('ki') || 
-      item.capsule.name?.toLowerCase().includes('movement') ||
-      item.capsule.name?.toLowerCase().includes('dash') ||
-      item.capsule.name?.toLowerCase().includes('transformation')
-    ).length
+    damage: equippedCapsules.filter(item => {
+      const name = item.capsule.name?.toLowerCase() || '';
+      const effect = item.capsule.effect?.toLowerCase() || '';
+      return name.includes('attack boost') || 
+             name.includes('damage') || 
+             effect.includes('damage increase') ||
+             effect.includes('attack damage') ||
+             name.includes('blast') ||
+             name.includes('power');
+    }).length,
+    defensive: equippedCapsules.filter(item => {
+      const name = item.capsule.name?.toLowerCase() || '';
+      const effect = item.capsule.effect?.toLowerCase() || '';
+      return name.includes('body') || 
+             name.includes('guard') || 
+             name.includes('defense') ||
+             name.includes('training') ||
+             effect.includes('flinch') ||
+             effect.includes('health');
+    }).length,
+    utility: equippedCapsules.filter(item => {
+      const name = item.capsule.name?.toLowerCase() || '';
+      const effect = item.capsule.effect?.toLowerCase() || '';
+      return name.includes('ki') || 
+             name.includes('speed') ||
+             name.includes('movement') ||
+             name.includes('dash') ||
+             name.includes('sparking') ||
+             effect.includes('ki recovery') ||
+             effect.includes('transformation');
+    }).length
   };
   
   // Parse blast counts for detailed super blast tracking
@@ -300,8 +320,7 @@ function extractStats(char, charMap, capsuleMap = {}, position = null) {
     }
   });
   
-  // Speed impact wins would be tracked separately in blastImpactWinCount if available
-  // For now, we'll use a heuristic based on speed impact count vs damage ratio
+  // Speed impact wins are tracked in battleNumCount.speedImpactWinCount
   
   return {
     name,
@@ -336,8 +355,8 @@ function extractStats(char, charMap, capsuleMap = {}, position = null) {
     lightningAttackCount: numCount.lightningAttack || 0,
     vanishingAttackCount: numCount.vanishingAttack || 0,
     dragonHomingCount: numCount.dragonHoming || 0,
-    speedImpactCount,
-    speedImpactWins: numCount.blastImpactWinCount || 0, // Use actual wins if available
+    speedImpactCount: numCount.speedImpactCount || speedImpactCount,
+    speedImpactWins: numCount.speedImpactWinCount || 0,
     sparkingComboCount: numCount.sparkingCount > 0 ? count.maxComboNum || 0 : 0,
     // Position tracking
     position: position,
@@ -844,7 +863,7 @@ function getAggregatedCharacterData(files, charMap, capsuleMap = {}, aiStrategie
   const characterStats = {};
   
   // Helper function to process a characterRecord (extracted to avoid duplication)
-  function processCharacterRecord(characterRecord, characterIdRecord, teams = null) {
+  function processCharacterRecord(characterRecord, characterIdRecord, teams = null, fileName = '') {
     Object.keys(characterRecord).forEach(key => {
       const char = characterRecord[key];
       const stats = extractStats(char, charMap, capsuleMap, null); // No position for aggregated data
@@ -852,11 +871,14 @@ function getAggregatedCharacterData(files, charMap, capsuleMap = {}, aiStrategie
       
       // Determine team association
       let teamName = null;
+      let opponentTeam = null;
       if (teams && Array.isArray(teams) && teams.length >= 2) {
         if (key.includes('AlliesTeamMember') || key.includes('１Ｐ')) {
           teamName = teams[0];
+          opponentTeam = teams[1];
         } else if (key.includes('EnemyTeamMember') || key.includes('２Ｐ')) {
           teamName = teams[1];
+          opponentTeam = teams[0];
         }
       }
       
@@ -913,6 +935,13 @@ function getAggregatedCharacterData(files, charMap, capsuleMap = {}, aiStrategie
           totalSpeedImpactWins: 0,
           totalSparkingCombo: 0,
           matchCount: 0,
+          // Build & Equipment tracking
+          totalCapsuleCost: 0,
+          totalDamageCaps: 0,
+          totalDefensiveCaps: 0,
+          totalUtilityCaps: 0,
+          buildArchetypes: {}, // Track build archetypes with counts
+          capsuleUsage: {}, // Track individual capsules used
           allFormsUsed: new Set(), // Track all forms used across matches
           formStats: {}, // Track per-form aggregated stats
           matches: [], // Track individual match data for meta analysis
@@ -969,6 +998,44 @@ function getAggregatedCharacterData(files, charMap, capsuleMap = {}, aiStrategie
       charData.totalSparkingCombo += stats.sparkingComboCount;
       charData.matchCount += 1;
       
+      // Build & Equipment tracking
+      charData.totalCapsuleCost += stats.totalCapsuleCost || 0;
+      charData.totalDamageCaps += stats.capsuleTypes?.damage || 0;
+      charData.totalDefensiveCaps += stats.capsuleTypes?.defensive || 0;
+      charData.totalUtilityCaps += stats.capsuleTypes?.utility || 0;
+      
+      // Track build archetype usage
+      if (stats.buildArchetype) {
+        charData.buildArchetypes[stats.buildArchetype] = (charData.buildArchetypes[stats.buildArchetype] || 0) + 1;
+      }
+      
+      // Track individual capsules used
+      if (stats.equippedCapsules && Array.isArray(stats.equippedCapsules)) {
+        stats.equippedCapsules.forEach(capsule => {
+          if (capsule.id) {
+            if (!charData.capsuleUsage[capsule.id]) {
+              charData.capsuleUsage[capsule.id] = {
+                id: capsule.id,
+                name: capsule.name,
+                count: 0
+              };
+            }
+            charData.capsuleUsage[capsule.id].count += 1;
+          }
+        });
+      }
+      
+      // Extract form change history
+      let formChangeHistory = '—';
+      let formChangeCount = 0;
+      if (Array.isArray(char.formChangeHistory) && char.formChangeHistory.length > 0) {
+        formChangeHistory = char.formChangeHistory.map(form => charMap[form.key] || form.key).join(' → ');
+        formChangeCount = char.formChangeHistory.length; // Count number of transformations
+      }
+      
+      // Determine win/loss status (character survived = won)
+      const won = stats.hPGaugeValue > 0;
+      
       // Add individual match data for meta analysis
       charData.matches.push({
         damageDone: stats.damageDone,
@@ -981,6 +1048,7 @@ function getAggregatedCharacterData(files, charMap, capsuleMap = {}, aiStrategie
         capsuleTypes: stats.capsuleTypes,
         equippedCapsules: stats.equippedCapsules,
         team: teamName,
+        opponentTeam: opponentTeam,
         aiStrategy: aiStrategy,
         kills: stats.kills,
         specialMovesUsed: stats.specialMovesUsed,
@@ -1006,7 +1074,11 @@ function getAggregatedCharacterData(files, charMap, capsuleMap = {}, aiStrategie
         dragonHomingCount: stats.dragonHomingCount,
         speedImpactCount: stats.speedImpactCount,
         speedImpactWins: stats.speedImpactWins,
-        sparkingComboCount: stats.sparkingComboCount
+        sparkingComboCount: stats.sparkingComboCount,
+        formChangeHistory: formChangeHistory,
+        formChangeCount: formChangeCount,
+        won: won,
+        fileName: fileName
       });
       
       // Track all forms used
@@ -1068,6 +1140,7 @@ function getAggregatedCharacterData(files, charMap, capsuleMap = {}, aiStrategie
   files.forEach(file => {
     if (file.error) return;
     
+    const fileName = file.name || file.fileName || '';
     let characterRecord, characterIdRecord, teams;
     
     // Handle TeamBattleResults format (current BR_Data structure)
@@ -1104,7 +1177,7 @@ function getAggregatedCharacterData(files, charMap, capsuleMap = {}, aiStrategie
         }
         
         if (teamCharRecord) {
-          processCharacterRecord(teamCharRecord, teamCharIdRecord, file.content.teams);
+          processCharacterRecord(teamCharRecord, teamCharIdRecord, file.content.teams, fileName);
         }
       });
       return; // Already processed all teams
@@ -1124,7 +1197,7 @@ function getAggregatedCharacterData(files, charMap, capsuleMap = {}, aiStrategie
     
     if (!characterRecord) return;
     
-    processCharacterRecord(characterRecord, characterIdRecord, teams);
+    processCharacterRecord(characterRecord, characterIdRecord, teams, fileName);
   });
   
   // Calculate averages and format form history
@@ -1202,7 +1275,22 @@ function getAggregatedCharacterData(files, charMap, capsuleMap = {}, aiStrategie
       avgDragonHoming: Math.round((char.totalDragonHoming / char.matchCount) * 10) / 10,
       avgSpeedImpacts: Math.round((char.totalSpeedImpacts / char.matchCount) * 10) / 10,
       avgSpeedImpactWins: Math.round((char.totalSpeedImpactWins / char.matchCount) * 10) / 10,
-      avgSparkingCombo: Math.round((char.totalSparkingCombo / char.matchCount) * 10) / 10
+      avgSparkingCombo: Math.round((char.totalSparkingCombo / char.matchCount) * 10) / 10,
+      // Build & Equipment averages
+      avgCapsuleCost: Math.round(char.totalCapsuleCost / char.matchCount),
+      avgDamageCaps: Math.round((char.totalDamageCaps / char.matchCount) * 10) / 10,
+      avgDefensiveCaps: Math.round((char.totalDefensiveCaps / char.matchCount) * 10) / 10,
+      avgUtilityCaps: Math.round((char.totalUtilityCaps / char.matchCount) * 10) / 10,
+      // Most used build archetype
+      primaryBuildArchetype: Object.keys(char.buildArchetypes).length > 0
+        ? Object.keys(char.buildArchetypes).reduce((a, b) => 
+            char.buildArchetypes[a] > char.buildArchetypes[b] ? a : b)
+        : 'No Build',
+      // Most used capsules (top 7)
+      topCapsules: Object.values(char.capsuleUsage)
+        .sort((a, b) => b.count - a.count)
+        .slice(0, 7)
+        .map(c => ({ id: c.id, name: c.name, usage: c.count }))
     };
   }).map(char => {
     // Calculate combat performance score
@@ -2010,6 +2098,79 @@ export default function App() {
       setSelectedFile(fileName);
     }
     setExpandedRows({});
+  };
+
+  // Handler for Excel export
+  const handleExcelExport = async () => {
+    try {
+      const characterData = prepareCharacterAveragesData(aggregatedData);
+      const matchData = prepareMatchDetailsData(aggregatedData);
+      
+      const result = await exportToExcel(characterData, matchData, {
+        filename: `DBSZ_Analysis_${new Date().toISOString().split('T')[0]}.xlsx`,
+        includeCharacterAverages: true,
+        includeMatchDetails: true,
+        includeFormatting: true
+      });
+      
+      if (result.success) {
+        console.log('Excel export successful:', result.filename);
+      } else {
+        console.error('Excel export failed:', result.error);
+        alert(`Export failed: ${result.error}`);
+      }
+    } catch (error) {
+      console.error('Export error:', error);
+      alert(`Export failed: ${error.message}`);
+    }
+  };
+
+  // Handler for Character Averages export only
+  const handleCharacterAveragesExport = async () => {
+    try {
+      const characterData = prepareCharacterAveragesData(aggregatedData);
+      
+      const result = await exportToExcel(characterData, [], {
+        filename: `Character_Averages_${new Date().toISOString().split('T')[0]}.xlsx`,
+        includeCharacterAverages: true,
+        includeMatchDetails: false,
+        includeFormatting: true
+      });
+      
+      if (result.success) {
+        console.log('Character Averages export successful:', result.filename);
+      } else {
+        console.error('Export failed:', result.error);
+        alert(`Export failed: ${result.error}`);
+      }
+    } catch (error) {
+      console.error('Export error:', error);
+      alert(`Export failed: ${error.message}`);
+    }
+  };
+
+  // Handler for Match Details export only
+  const handleMatchDetailsExport = async () => {
+    try {
+      const matchData = prepareMatchDetailsData(aggregatedData);
+      
+      const result = await exportToExcel([], matchData, {
+        filename: `Match_Details_${new Date().toISOString().split('T')[0]}.xlsx`,
+        includeCharacterAverages: false,
+        includeMatchDetails: true,
+        includeFormatting: true
+      });
+      
+      if (result.success) {
+        console.log('Match Details export successful:', result.filename);
+      } else {
+        console.error('Export failed:', result.error);
+        alert(`Export failed: ${result.error}`);
+      }
+    } catch (error) {
+      console.error('Export error:', error);
+      alert(`Export failed: ${error.message}`);
+    }
   };
 
   // Helper function to recursively search for BattleResults, TeamBattleResults, or battleWinLose in nested JSON
@@ -4468,41 +4629,86 @@ export default function App() {
         {((mode === 'reference' && viewType === 'tables') || 
           (mode === 'manual' && viewType === 'tables' && manualFiles.filter(f => !f.error).length > 0)) && (
           <div className="space-y-6">
-            {/* Export Manager */}
-            <div className={`rounded-2xl shadow-xl p-6 ${darkMode ? 'bg-gray-800' : 'bg-white'}`}>
-              <ExportManager
-                aggregatedData={aggregatedData}
-                positionData={positionData}
-                metaData={{ topCapsules: prepareMetaData({ topCapsules: Object.values(aggregatedData).flatMap(char => char.equippedCapsules || []) }) }}
-                viewType={viewType}
-                darkMode={darkMode}
-                selectedFile={selectedFile}
-              />
-            </div>
-
             {/* Character Statistics Table */}
             {aggregatedData && Object.keys(aggregatedData).length > 0 && (
-              <div className={`rounded-2xl shadow-xl p-6 ${darkMode ? 'bg-gray-800' : 'bg-white'}`}>
-                <DataTable
-                  data={prepareCharacterData(aggregatedData)}
-                  columns={getCharacterTableConfig(darkMode).columns}
-                  title="Character Performance Statistics"
-                  exportFileName={`character_stats_${new Date().toISOString().split('T')[0]}`}
-                  onExport={(exportData, filename) => {
-                    // Handle export via ExportManager
-                    console.log('Character data export requested:', { exportData, filename });
-                  }}
-                  darkMode={darkMode}
-                  selectable={true}
-                  onSelectionChange={(selectedRows) => {
-                    console.log('Selected characters:', selectedRows);
-                  }}
-                />
-              </div>
+              <>
+                {/* Excel Export Button */}
+                <div className={`rounded-2xl shadow-xl p-6 ${darkMode ? 'bg-gray-800' : 'bg-white'}`}>
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h3 className={`text-lg font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>
+                        Export Data Tables
+                      </h3>
+                      <p className={`text-sm mt-1 ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
+                        Download all data tables to Excel (.xlsx) with full formatting
+                      </p>
+                    </div>
+                    <button
+                      onClick={handleExcelExport}
+                      className={`flex items-center gap-2 px-6 py-3 rounded-lg font-semibold transition-all shadow-lg hover:shadow-xl ${
+                        darkMode 
+                          ? 'bg-blue-600 hover:bg-blue-700 text-white' 
+                          : 'bg-blue-500 hover:bg-blue-600 text-white'
+                      }`}
+                    >
+                      <Download size={20} />
+                      Export to Excel
+                    </button>
+                  </div>
+                </div>
+
+                {/* Character Averages Table */}
+                <div className={`rounded-2xl shadow-xl p-6 ${darkMode ? 'bg-gray-800' : 'bg-white'}`}>
+                  <div className="mb-4">
+                    <h3 className={`text-xl font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>
+                      Character Performance Averages
+                    </h3>
+                    <p className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
+                      Aggregated statistics showing overall performance across all matches
+                    </p>
+                  </div>
+                  <DataTable
+                    data={prepareCharacterAveragesData(aggregatedData)}
+                    columns={getCharacterAveragesTableConfig(darkMode).columns}
+                    title="Character Performance Averages"
+                    exportFileName={`character_averages_${new Date().toISOString().split('T')[0]}`}
+                    onExport={handleCharacterAveragesExport}
+                    darkMode={darkMode}
+                    selectable={true}
+                    onSelectionChange={(selectedRows) => {
+                      console.log('Selected characters (averages):', selectedRows);
+                    }}
+                  />
+                </div>
+
+                {/* Match Details Table */}
+                <div className={`rounded-2xl shadow-xl p-6 ${darkMode ? 'bg-gray-800' : 'bg-white'}`}>
+                  <div className="mb-4">
+                    <h3 className={`text-xl font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>
+                      Individual Match Performance Details
+                    </h3>
+                    <p className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
+                      Per-match statistics for detailed analysis and trend identification
+                    </p>
+                  </div>
+                  <DataTable
+                    data={prepareMatchDetailsData(aggregatedData)}
+                    columns={getMatchDetailsTableConfig(darkMode).columns}
+                    title="Individual Match Performance Details"
+                    exportFileName={`match_details_${new Date().toISOString().split('T')[0]}`}
+                    onExport={handleMatchDetailsExport}
+                    darkMode={darkMode}
+                    selectable={true}
+                    onSelectionChange={(selectedRows) => {
+                      console.log('Selected match details:', selectedRows);
+                    }}
+                  />
+                </div>
+              </>
             )}
 
-            {/* Position Analysis Table */}
-            {positionData && Object.keys(positionData).length > 0 && (
+            {/* Position Analysis Table - DISABLED FOR NOW */}
+            {/* {positionData && Object.keys(positionData).length > 0 && (
               <div className={`rounded-2xl shadow-xl p-6 ${darkMode ? 'bg-gray-800' : 'bg-white'}`}>
                 <DataTable
                   data={preparePositionData(positionData)}
@@ -4519,10 +4725,10 @@ export default function App() {
                   }}
                 />
               </div>
-            )}
+            )} */}
 
-            {/* Meta Analysis Table */}
-            {aggregatedData && Object.keys(aggregatedData).length > 0 && (
+            {/* Meta Analysis Table - DISABLED FOR NOW */}
+            {/* {aggregatedData && Object.keys(aggregatedData).length > 0 && (
               <div className={`rounded-2xl shadow-xl p-6 ${darkMode ? 'bg-gray-800' : 'bg-white'}`}>
                 <DataTable
                   data={(() => {
@@ -4568,7 +4774,7 @@ export default function App() {
                   }}
                 />
               </div>
-            )}
+            )} */}
           </div>
         )}
 
