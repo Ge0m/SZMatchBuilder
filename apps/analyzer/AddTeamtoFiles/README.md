@@ -19,6 +19,8 @@ Overwrite originals:
 
 node wrapBattleResultsWithTeam.js D:/path/to/BattleResultFiles --teams="Cinema,Cold Kingdom" --inplace
 
+node "d:/DBZL/SZLeague/GitHub/SZMatchBuilder/apps/analyzer/AddTeamtoFiles/wrapBattleResultsWithTeam.js" --teams="Master and Student,No Team" --inplace
+
 Behavior
 --------
 - If the input JSON already has a top-level `TeamBattleResults`, the script will set/overwrite its `teams` property.

@@ -769,8 +769,19 @@ function getPositionBasedData(files, charMap, capsuleMap = {}) {
     let characterRecord;
     
     // Handle TeamBattleResults format (current BR_Data structure)
-    if (fileContent.TeamBattleResults && fileContent.TeamBattleResults.battleResult) {
-      characterRecord = fileContent.TeamBattleResults.battleResult.characterRecord;
+    if (fileContent.TeamBattleResults) {
+      // Check for battleResult (lowercase r)
+      if (fileContent.TeamBattleResults.battleResult) {
+        characterRecord = fileContent.TeamBattleResults.battleResult.characterRecord;
+      }
+      // Check for BattleResults (capital R) - Cinema files format
+      else if (fileContent.TeamBattleResults.BattleResults) {
+        characterRecord = fileContent.TeamBattleResults.BattleResults.characterRecord;
+      }
+      // Check if data is directly in TeamBattleResults (new wrapper format)
+      else if (fileContent.TeamBattleResults.characterRecord) {
+        characterRecord = fileContent.TeamBattleResults.characterRecord;
+      }
     }
     // Handle new format with teams array at the top
     else if (fileContent.teams && Array.isArray(fileContent.teams)) {
@@ -1060,10 +1071,23 @@ function getAggregatedCharacterData(files, charMap, capsuleMap = {}, aiStrategie
     let characterRecord, characterIdRecord, teams;
     
     // Handle TeamBattleResults format (current BR_Data structure)
-    if (file.content.TeamBattleResults && file.content.TeamBattleResults.battleResult) {
-      characterRecord = file.content.TeamBattleResults.battleResult.characterRecord;
-      characterIdRecord = file.content.TeamBattleResults.battleResult.characterIdRecord;
+    if (file.content.TeamBattleResults) {
       teams = file.content.TeamBattleResults.teams;
+      // Check for battleResult (lowercase r)
+      if (file.content.TeamBattleResults.battleResult) {
+        characterRecord = file.content.TeamBattleResults.battleResult.characterRecord;
+        characterIdRecord = file.content.TeamBattleResults.battleResult.characterIdRecord;
+      }
+      // Check for BattleResults (capital R) - Cinema files format
+      else if (file.content.TeamBattleResults.BattleResults) {
+        characterRecord = file.content.TeamBattleResults.BattleResults.characterRecord;
+        characterIdRecord = file.content.TeamBattleResults.BattleResults.characterIdRecord;
+      }
+      // Check if data is directly in TeamBattleResults (new wrapper format)
+      else if (file.content.TeamBattleResults.characterRecord) {
+        characterRecord = file.content.TeamBattleResults.characterRecord;
+        characterIdRecord = file.content.TeamBattleResults.characterIdRecord;
+      }
     }
     // Handle new format with teams array at the top
     else if (file.content.teams && Array.isArray(file.content.teams)) {
@@ -1197,9 +1221,9 @@ function getAggregatedCharacterData(files, charMap, capsuleMap = {}, aiStrategie
       (healthRetention) * 15             // Health retention weight: 15%
     );
     
-    // Experience multiplier based on matches played (1.0 to 1.5x)
+    // Experience multiplier based on matches played (1.0 to 1.25x, maxed at 12 matches)
     // Characters with more matches get slightly higher weight
-    const experienceMultiplier = Math.min(1.5, 1.0 + (char.matchCount - 1) * 0.05);
+    const experienceMultiplier = Math.min(1.25, 1.0 + (char.matchCount - 1) * (0.25 / 11));
     
     // Final combat performance score
     const combatPerformanceScore = baseScore * experienceMultiplier;
@@ -1233,8 +1257,21 @@ function getTeamAggregatedData(files, charMap, capsuleMap = {}) {
     // Handle TeamBattleResults format (current BR_Data structure)
     if (file.content.TeamBattleResults) {
       teams = file.content.TeamBattleResults.teams;
-      battleWinLose = file.content.TeamBattleResults.battleResult?.battleWinLose;
-      characterRecord = file.content.TeamBattleResults.battleResult?.characterRecord;
+      // Check for battleResult (lowercase r)
+      if (file.content.TeamBattleResults.battleResult) {
+        battleWinLose = file.content.TeamBattleResults.battleResult.battleWinLose;
+        characterRecord = file.content.TeamBattleResults.battleResult.characterRecord;
+      }
+      // Check for BattleResults (capital R) - Cinema files format
+      else if (file.content.TeamBattleResults.BattleResults) {
+        battleWinLose = file.content.TeamBattleResults.BattleResults.battleWinLose;
+        characterRecord = file.content.TeamBattleResults.BattleResults.characterRecord;
+      }
+      // Check if data is directly in TeamBattleResults (new wrapper format)
+      else if (file.content.TeamBattleResults.battleWinLose && file.content.TeamBattleResults.characterRecord) {
+        battleWinLose = file.content.TeamBattleResults.battleWinLose;
+        characterRecord = file.content.TeamBattleResults.characterRecord;
+      }
     }
     // Handle other formats
     else if (file.content.teams && Array.isArray(file.content.teams)) {
@@ -1258,8 +1295,22 @@ function getTeamAggregatedData(files, charMap, capsuleMap = {}) {
     const team1Name = teams[0];
     const team2Name = teams[1];
     
+    // Check if team names are valid (not empty, null, undefined, or just whitespace)
+    const isTeam1Valid = team1Name && typeof team1Name === 'string' && team1Name.trim() !== '';
+    const isTeam2Valid = team2Name && typeof team2Name === 'string' && team2Name.trim() !== '';
+    
+    // Skip entirely if both teams are invalid
+    if (!isTeam1Valid && !isTeam2Valid) {
+      return;
+    }
+    
+    // Determine which teams to process (only valid ones)
+    const teamsToProcess = [];
+    if (isTeam1Valid) teamsToProcess.push({ name: team1Name, isTeam1: true });
+    if (isTeam2Valid) teamsToProcess.push({ name: team2Name, isTeam1: false });
+    
     // Initialize team stats if they don't exist
-    [team1Name, team2Name].forEach(teamName => {
+    teamsToProcess.forEach(({ name: teamName }) => {
       if (!teamStats[teamName]) {
         teamStats[teamName] = {
           teamName,
@@ -1295,33 +1346,36 @@ function getTeamAggregatedData(files, charMap, capsuleMap = {}) {
     const team1Won = battleWinLose === 'Win';
     const team2Won = battleWinLose === 'Lose';
     
-    // Update win/loss records
-    teamStats[team1Name].matches++;
-    teamStats[team2Name].matches++;
-    
-    if (team1Won) {
-      teamStats[team1Name].wins++;
-      teamStats[team2Name].losses++;
-    } else if (team2Won) {
-      teamStats[team1Name].losses++;
-      teamStats[team2Name].wins++;
+    // Update win/loss records only for valid teams
+    if (isTeam1Valid) {
+      teamStats[team1Name].matches++;
+      if (team1Won) teamStats[team1Name].wins++;
+      else if (team2Won) teamStats[team1Name].losses++;
     }
     
-    // Initialize opponent records
-    if (!teamStats[team1Name].opponentRecords[team2Name]) {
-      teamStats[team1Name].opponentRecords[team2Name] = { wins: 0, losses: 0 };
-    }
-    if (!teamStats[team2Name].opponentRecords[team1Name]) {
-      teamStats[team2Name].opponentRecords[team1Name] = { wins: 0, losses: 0 };
+    if (isTeam2Valid) {
+      teamStats[team2Name].matches++;
+      if (team2Won) teamStats[team2Name].wins++;
+      else if (team1Won) teamStats[team2Name].losses++;
     }
     
-    // Update head-to-head records
-    if (team1Won) {
-      teamStats[team1Name].opponentRecords[team2Name].wins++;
-      teamStats[team2Name].opponentRecords[team1Name].losses++;
-    } else if (team2Won) {
-      teamStats[team1Name].opponentRecords[team2Name].losses++;
-      teamStats[team2Name].opponentRecords[team1Name].wins++;
+    // Initialize opponent records only if both teams are valid
+    if (isTeam1Valid && isTeam2Valid) {
+      if (!teamStats[team1Name].opponentRecords[team2Name]) {
+        teamStats[team1Name].opponentRecords[team2Name] = { wins: 0, losses: 0 };
+      }
+      if (!teamStats[team2Name].opponentRecords[team1Name]) {
+        teamStats[team2Name].opponentRecords[team1Name] = { wins: 0, losses: 0 };
+      }
+      
+      // Update head-to-head records
+      if (team1Won) {
+        teamStats[team1Name].opponentRecords[team2Name].wins++;
+        teamStats[team2Name].opponentRecords[team1Name].losses++;
+      } else if (team2Won) {
+        teamStats[team1Name].opponentRecords[team2Name].losses++;
+        teamStats[team2Name].opponentRecords[team1Name].wins++;
+      }
     }
     
     // Process character data for both teams
@@ -1329,20 +1383,25 @@ function getTeamAggregatedData(files, charMap, capsuleMap = {}) {
     const p1TeamStats = getTeamStats(teams_data.p1, charMap, capsuleMap);
     const p2TeamStats = getTeamStats(teams_data.p2, charMap, capsuleMap);
     
-    // Aggregate team 1 stats
-    teamStats[team1Name].totalDamageDealt += p1TeamStats.totalDamage;
-    teamStats[team1Name].totalDamageTaken += p1TeamStats.totalTaken;
-    teamStats[team1Name].totalHealthRemaining += p1TeamStats.totalHealth;
-    teamStats[team1Name].totalHealthMax += p1TeamStats.totalHPGaugeValueMax;
+    // Aggregate team 1 stats only if valid
+    if (isTeam1Valid) {
+      teamStats[team1Name].totalDamageDealt += p1TeamStats.totalDamage;
+      teamStats[team1Name].totalDamageTaken += p1TeamStats.totalTaken;
+      teamStats[team1Name].totalHealthRemaining += p1TeamStats.totalHealth;
+      teamStats[team1Name].totalHealthMax += p1TeamStats.totalHPGaugeValueMax;
+    }
     
-    // Aggregate team 2 stats  
-    teamStats[team2Name].totalDamageDealt += p2TeamStats.totalDamage;
-    teamStats[team2Name].totalDamageTaken += p2TeamStats.totalTaken;
-    teamStats[team2Name].totalHealthRemaining += p2TeamStats.totalHealth;
-    teamStats[team2Name].totalHealthMax += p2TeamStats.totalHPGaugeValueMax;
+    // Aggregate team 2 stats only if valid
+    if (isTeam2Valid) {
+      teamStats[team2Name].totalDamageDealt += p2TeamStats.totalDamage;
+      teamStats[team2Name].totalDamageTaken += p2TeamStats.totalTaken;
+      teamStats[team2Name].totalHealthRemaining += p2TeamStats.totalHealth;
+      teamStats[team2Name].totalHealthMax += p2TeamStats.totalHPGaugeValueMax;
+    }
     
-    // Track character usage
-    teams_data.p1.forEach(char => {
+    // Track character usage for team 1 only if valid
+    if (isTeam1Valid) {
+      teams_data.p1.forEach(char => {
       const stats = extractStats(char, charMap, capsuleMap);
       if (stats.name && stats.name !== '-') {
         teamStats[team1Name].charactersUsed.add(stats.name);
@@ -1373,8 +1432,11 @@ function getTeamAggregatedData(files, charMap, capsuleMap = {}) {
         }
       }
     });
+    }
     
-    teams_data.p2.forEach(char => {
+    // Track character usage for team 2 only if valid
+    if (isTeam2Valid) {
+      teams_data.p2.forEach(char => {
       const stats = extractStats(char, charMap, capsuleMap);
       if (stats.name && stats.name !== '-') {
         teamStats[team2Name].charactersUsed.add(stats.name);
@@ -1405,27 +1467,32 @@ function getTeamAggregatedData(files, charMap, capsuleMap = {}) {
         }
       }
     });
+    }
     
-    // Add match history
-    teamStats[team1Name].matchHistory.push({
-      opponent: team2Name,
-      result: team1Won ? 'Win' : 'Loss',
-      damageDealt: p1TeamStats.totalDamage,
-      damageTaken: p1TeamStats.totalTaken,
-      healthRemaining: p1TeamStats.totalHealth,
-      healthMax: p1TeamStats.totalHPGaugeValueMax,
-      fileName: file.name
-    });
+    // Add match history only for valid teams
+    if (isTeam1Valid) {
+      teamStats[team1Name].matchHistory.push({
+        opponent: isTeam2Valid ? team2Name : 'Unknown',
+        result: team1Won ? 'Win' : 'Loss',
+        damageDealt: p1TeamStats.totalDamage,
+        damageTaken: p1TeamStats.totalTaken,
+        healthRemaining: p1TeamStats.totalHealth,
+        healthMax: p1TeamStats.totalHPGaugeValueMax,
+        fileName: file.name
+      });
+    }
     
-    teamStats[team2Name].matchHistory.push({
-      opponent: team1Name,
-      result: team2Won ? 'Win' : 'Loss',
-      damageDealt: p2TeamStats.totalDamage,
-      damageTaken: p2TeamStats.totalTaken,
-      healthRemaining: p2TeamStats.totalHealth,
-      healthMax: p2TeamStats.totalHPGaugeValueMax,
-      fileName: file.name
-    });
+    if (isTeam2Valid) {
+      teamStats[team2Name].matchHistory.push({
+        opponent: isTeam1Valid ? team1Name : 'Unknown',
+        result: team2Won ? 'Win' : 'Loss',
+        damageDealt: p2TeamStats.totalDamage,
+        damageTaken: p2TeamStats.totalTaken,
+        healthRemaining: p2TeamStats.totalHealth,
+        healthMax: p2TeamStats.totalHPGaugeValueMax,
+        fileName: file.name
+      });
+    }
   });
   
   // Calculate final statistics and format data
@@ -1473,8 +1540,8 @@ function getTeamAggregatedData(files, charMap, capsuleMap = {}) {
           (healthRetention) * 15                   // Health retention weight: 15%
         );
         
-        // Experience multiplier based on matches played (1.0 to 1.5x)
-        const experienceMultiplier = Math.min(1.5, 1.0 + (matchCount - 1) * 0.05);
+        // Experience multiplier based on matches played (1.0 to 1.25x, maxed at 12 matches)
+        const experienceMultiplier = Math.min(1.25, 1.0 + (matchCount - 1) * (0.25 / 11));
         const performanceScore = Math.round((baseScore * experienceMultiplier) * 100) / 100;
         
         team.characterAverages[charName] = {
@@ -1545,7 +1612,9 @@ export default function App() {
   const [sortBy, setSortBy] = useState('combatScore');
   const [sortDirection, setSortDirection] = useState('desc');
   const [selectedTeams, setSelectedTeams] = useState([]);
+  const [teamSearchInput, setTeamSearchInput] = useState('');
   const [selectedAIStrategies, setSelectedAIStrategies] = useState([]);
+  const [aiStrategySearchInput, setAIStrategySearchInput] = useState('');
 
   // Combobox state for searchable file selection
   const [comboboxInput, setComboboxInput] = useState(selectedFile || '');
@@ -1711,8 +1780,8 @@ export default function App() {
         (healthRetention) * 15              // Health retention weight: 15%
       );
       
-      // Experience multiplier based on matches played (1.0 to 1.5x)
-      const experienceMultiplier = Math.min(1.5, 1.0 + (matchCount - 1) * 0.05);
+      // Experience multiplier based on matches played (1.0 to 1.25x, maxed at 12 matches)
+      const experienceMultiplier = Math.min(1.25, 1.0 + (matchCount - 1) * (0.25 / 11));
       const combatPerformanceScore = baseScore * experienceMultiplier;
       
       return {
@@ -2764,9 +2833,14 @@ export default function App() {
                   
                   {/* Search Input with Dropdown */}
                   <div className="relative">
-                    <Search className={`absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 ${
-                      darkMode ? 'text-gray-400' : 'text-gray-500'
-                    }`} />
+                    <div className={`text-sm font-medium mb-2 flex items-center gap-2 ${
+                    darkMode ? 'text-gray-300' : 'text-gray-700'
+                    }`}>
+                      <Search className={`absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 ${
+                        darkMode ? 'text-gray-400' : 'text-gray-500'
+                      }`} />
+                      Characters
+                    </div>
                     <input
                       type="text"
                       placeholder="Search and select characters..."
@@ -2944,35 +3018,111 @@ export default function App() {
                 {/* Team Filter */}
                 {availableTeams.length > 0 && (
                   <div className="mb-4">
-                    <div className={`text-sm font-medium mb-2 flex items-center gap-2 ${
-                      darkMode ? 'text-gray-300' : 'text-gray-700'
-                    }`}>
-                      <Users className="w-4 h-4" />
-                      Teams
-                    </div>
-                    <div className="flex flex-wrap gap-2">
-                      {availableTeams.map(team => {
-                        const isActive = selectedTeams.includes(team);
-                        return (
+                    {/* Selected Teams as Chips */}
+                    {selectedTeams.length > 0 && (
+                      <div className="flex flex-wrap gap-2 mb-2">
+                        {selectedTeams.map(team => (
                           <button
                             key={team}
                             onClick={() => {
-                              setSelectedTeams(prev => 
-                                isActive 
-                                  ? prev.filter(t => t !== team)
-                                  : [...prev, team]
-                              );
+                              setSelectedTeams(prev => prev.filter(t => t !== team));
                             }}
-                            className={`px-3 py-1.5 rounded-lg border text-sm font-medium transition-all ${
-                              isActive
-                                ? (darkMode ? 'bg-blue-900 border-blue-600 text-blue-300' : 'bg-blue-100 border-blue-500 text-blue-700')
-                                : (darkMode ? 'bg-gray-800 border-gray-600 text-gray-400 hover:border-gray-500' : 'bg-gray-100 border-gray-300 text-gray-500 hover:border-gray-400')
+                            className={`px-3 py-1.5 rounded-lg border text-sm font-medium transition-all flex items-center gap-1 ${
+                              darkMode 
+                                ? 'bg-blue-900 border-blue-600 text-blue-300 hover:bg-blue-800' 
+                                : 'bg-blue-100 border-blue-500 text-blue-700 hover:bg-blue-200'
                             }`}
                           >
                             {team}
+                            <X className="w-3 h-3" />
                           </button>
-                        );
-                      })}
+                        ))}
+                        <button
+                          onClick={() => setSelectedTeams([])}
+                          className={`px-2 py-1.5 rounded-lg text-xs font-medium transition-all ${
+                            darkMode 
+                              ? 'text-gray-400 bg-gray-800 hover:text-gray-300 hover:bg-gray-700' 
+                              : 'text-gray-500 hover:text-gray-700 hover:bg-gray-100'
+                          }`}
+                        >
+                          Clear all
+                        </button>
+                      </div>
+                    )}
+                    
+                    {/* Search Input with Dropdown */}
+                    <div className="relative">
+                      <div className={`text-sm font-medium mb-2 flex items-center gap-2 ${
+                      darkMode ? 'text-gray-300' : 'text-gray-700'
+                      }`}>
+                        <Users className={`absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 ${
+                          darkMode ? 'text-gray-400' : 'text-gray-500'
+                        }`} />
+                        Teams
+                      </div>
+                      <input
+                        type="text"
+                        placeholder="Search and select teams..."
+                        value={teamSearchInput}
+                        onChange={(e) => setTeamSearchInput(e.target.value)}
+                        className={`w-full pl-10 pr-10 py-2 rounded-lg border ${
+                          darkMode 
+                            ? 'bg-gray-800 border-gray-600 text-white placeholder-gray-400 focus:border-blue-500' 
+                            : 'bg-white border-gray-300 text-gray-900 placeholder-gray-500 focus:border-blue-500'
+                        } focus:outline-none focus:ring-2 focus:ring-blue-500/50`}
+                      />
+                      {teamSearchInput && (
+                        <button
+                          onClick={() => setTeamSearchInput('')}
+                          className={`absolute right-3 top-1/2 transform -translate-y-1/2 ${
+                            darkMode ? 'text-gray-400 bg-gray-700 hover:text-gray-300' : 'text-gray-500 hover:text-gray-700'
+                          }`}
+                        >
+                          <X className="w-5 h-5" />
+                        </button>
+                      )}
+                      
+                      {/* Dropdown with filtered teams */}
+                      {teamSearchInput && (
+                        <div className={`absolute z-10 w-full mt-1 rounded-lg border shadow-lg max-h-60 overflow-y-auto ${
+                          darkMode 
+                            ? 'bg-gray-800 border-gray-600' 
+                            : 'bg-white border-gray-300'
+                        }`}>
+                          {availableTeams
+                            .filter(team => 
+                              team.toLowerCase().includes(teamSearchInput.toLowerCase()) &&
+                              !selectedTeams.includes(team)
+                            )
+                            .map(team => (
+                              <button
+                                key={team}
+                                onClick={() => {
+                                  setSelectedTeams(prev => [...prev, team]);
+                                  setTeamSearchInput('');
+                                }}
+                                className={`w-full text-left px-4 py-2 text-sm transition-colors ${
+                                  darkMode 
+                                    ? 'text-gray-100 bg-gray-600 hover:bg-gray-700 hover:text-white' 
+                                    : 'text-gray-700 hover:bg-gray-100'
+                                }`}
+                              >
+                                {team}
+                              </button>
+                            ))
+                          }
+                          {availableTeams.filter(team => 
+                            team.toLowerCase().includes(teamSearchInput.toLowerCase()) &&
+                            !selectedTeams.includes(team)
+                          ).length === 0 && (
+                            <div className={`px-4 py-2 text-sm ${
+                              darkMode ? 'text-gray-400' : 'text-gray-500'
+                            }`}>
+                              No teams found
+                            </div>
+                          )}
+                        </div>
+                      )}
                     </div>
                   </div>
                 )}
@@ -2980,36 +3130,119 @@ export default function App() {
                 {/* AI Strategy Filter */}
                 {availableAIStrategies.length > 0 && (
                   <div className="mb-4">
-                    <div className={`text-sm font-medium mb-2 flex items-center gap-2 ${
+                    {/* Selected AI Strategies as Chips */}
+                    {selectedAIStrategies.length > 0 && (
+                      <div className="flex flex-wrap gap-2 mb-2">
+                        {selectedAIStrategies.map(ai => {
+                          const displayName = ai === 'Com' ? 'Computer' : ai === 'Player' ? 'Player' : ai;
+                          return (
+                            <button
+                              key={ai}
+                              onClick={() => {
+                                setSelectedAIStrategies(prev => prev.filter(a => a !== ai));
+                              }}
+                              className={`px-3 py-1.5 rounded-lg border text-sm font-medium transition-all flex items-center gap-1 ${
+                                darkMode 
+                                  ? 'bg-purple-900 border-purple-600 text-purple-300 hover:bg-purple-800' 
+                                  : 'bg-purple-100 border-purple-500 text-purple-700 hover:bg-purple-200'
+                              }`}
+                            >
+                              {displayName}
+                              <X className="w-3 h-3" />
+                            </button>
+                          );
+                        })}
+                        <button
+                          onClick={() => setSelectedAIStrategies([])}
+                          className={`px-2 py-1.5 rounded-lg text-xs font-medium transition-all ${
+                            darkMode 
+                              ? 'text-gray-400 bg-gray-800 hover:text-gray-300 hover:bg-gray-700' 
+                              : 'text-gray-500 hover:text-gray-700 hover:bg-gray-100'
+                          }`}
+                        >
+                          Clear all
+                        </button>
+                      </div>
+                    )}
+                    
+                    {/* Search Input with Dropdown */}
+                    <div className="relative">
+                      <div className={`text-sm font-medium mb-2 flex items-center gap-2 ${
                       darkMode ? 'text-gray-300' : 'text-gray-700'
-                    }`}>
-                      <Settings className="w-4 h-4" />
-                      AI Strategy
-                    </div>
-                    <div className="flex flex-wrap gap-2">
-                      {availableAIStrategies.map(ai => {
-                        const isActive = selectedAIStrategies.includes(ai);
-                        const displayName = ai === 'Com' ? 'Computer' : ai === 'Player' ? 'Player' : ai;
-                        return (
-                          <button
-                            key={ai}
-                            onClick={() => {
-                              setSelectedAIStrategies(prev => 
-                                isActive 
-                                  ? prev.filter(a => a !== ai)
-                                  : [...prev, ai]
+                      }`}>
+                        <Settings className={`absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 ${
+                          darkMode ? 'text-gray-400' : 'text-gray-500'
+                        }`} />
+                        AI Strategies
+                      </div>
+                      <input
+                        type="text"
+                        placeholder="Search and select AI strategies..."
+                        value={aiStrategySearchInput}
+                        onChange={(e) => setAIStrategySearchInput(e.target.value)}
+                        className={`w-full pl-10 pr-10 py-2 rounded-lg border ${
+                          darkMode 
+                            ? 'bg-gray-800 border-gray-600 text-white placeholder-gray-400 focus:border-purple-500' 
+                            : 'bg-white border-gray-300 text-gray-900 placeholder-gray-500 focus:border-purple-500'
+                        } focus:outline-none focus:ring-2 focus:ring-purple-500/50`}
+                      />
+                      {aiStrategySearchInput && (
+                        <button
+                          onClick={() => setAIStrategySearchInput('')}
+                          className={`absolute right-3 top-1/2 transform -translate-y-1/2 ${
+                            darkMode ? 'text-gray-400 bg-gray-700 hover:text-gray-300' : 'text-gray-500 hover:text-gray-700'
+                          }`}
+                        >
+                          <X className="w-5 h-5" />
+                        </button>
+                      )}
+                      
+                      {/* Dropdown with filtered AI strategies */}
+                      {aiStrategySearchInput && (
+                        <div className={`absolute z-10 w-full mt-1 rounded-lg border shadow-lg max-h-60 overflow-y-auto ${
+                          darkMode 
+                            ? 'bg-gray-800 border-gray-600' 
+                            : 'bg-white border-gray-300'
+                        }`}>
+                          {availableAIStrategies
+                            .filter(ai => {
+                              const displayName = ai === 'Com' ? 'Computer' : ai === 'Player' ? 'Player' : ai;
+                              return displayName.toLowerCase().includes(aiStrategySearchInput.toLowerCase()) &&
+                                !selectedAIStrategies.includes(ai);
+                            })
+                            .map(ai => {
+                              const displayName = ai === 'Com' ? 'Computer' : ai === 'Player' ? 'Player' : ai;
+                              return (
+                                <button
+                                  key={ai}
+                                  onClick={() => {
+                                    setSelectedAIStrategies(prev => [...prev, ai]);
+                                    setAIStrategySearchInput('');
+                                  }}
+                                  className={`w-full text-left px-4 py-2 text-sm transition-colors ${
+                                    darkMode 
+                                      ? 'text-gray-100 bg-gray-600 hover:bg-gray-700 hover:text-white' 
+                                      : 'text-gray-700 hover:bg-gray-100'
+                                  }`}
+                                >
+                                  {displayName}
+                                </button>
                               );
-                            }}
-                            className={`px-3 py-1.5 rounded-lg border text-sm font-medium transition-all ${
-                              isActive
-                                ? (darkMode ? 'bg-purple-900 border-purple-600 text-purple-300' : 'bg-purple-100 border-purple-500 text-purple-700')
-                                : (darkMode ? 'bg-gray-800 border-gray-600 text-gray-400 hover:border-gray-500' : 'bg-gray-100 border-gray-300 text-gray-500 hover:border-gray-400')
-                            }`}
-                          >
-                            {displayName}
-                          </button>
-                        );
-                      })}
+                            })
+                          }
+                          {availableAIStrategies.filter(ai => {
+                            const displayName = ai === 'Com' ? 'Computer' : ai === 'Player' ? 'Player' : ai;
+                            return displayName.toLowerCase().includes(aiStrategySearchInput.toLowerCase()) &&
+                              !selectedAIStrategies.includes(ai);
+                          }).length === 0 && (
+                            <div className={`px-4 py-2 text-sm ${
+                              darkMode ? 'text-gray-400' : 'text-gray-500'
+                            }`}>
+                              No AI strategies found
+                            </div>
+                          )}
+                        </div>
+                      )}
                     </div>
                   </div>
                 )}

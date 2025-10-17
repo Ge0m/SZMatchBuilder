@@ -50,15 +50,15 @@ Final Score = Base Score × Experience Multiplier
 - **Example:** 5,000 HP remaining ÷ 10,000 max HP = 0.5 retention → 0.5 × 15 = 7.5 points
 - **Why it matters:** Surviving longer gives you more options in team battles
 
-#### 5. **Experience Multiplier (1.0x to 1.5x)**
+#### 5. **Experience Multiplier (1.0x to 1.25x)**
 - **Based on:** Number of matches played
-- **Formula:** `min(1.5, 1.0 + (matchCount - 1) × 0.05)`
+- **Formula:** `min(1.25, 1.0 + (matchCount - 1) × (0.25 / 11))`
 - **Scaling:**
   - 1 match = 1.00x multiplier
-  - 2 matches = 1.05x multiplier
-  - 5 matches = 1.20x multiplier
-  - 10 matches = 1.45x multiplier
-  - 11+ matches = 1.50x multiplier (maximum)
+  - 2 matches = 1.023x multiplier
+  - 5 matches = 1.091x multiplier
+  - 10 matches = 1.205x multiplier
+  - 12+ matches = 1.25x multiplier (maximum)
 - **Why it matters:** More data = More reliable and statistically significant score
 
 ### Complete Calculation Example:
@@ -88,9 +88,9 @@ Base Score = 5.25 + 37.50 + 3.125 + 7.50 = 53.375
 
 **Step 3: Apply experience multiplier**
 ```
-Experience Multiplier = 1.0 + (10 - 1) × 0.05 = 1.45
-Final Score = 53.375 × 1.45 = 77.39
-Displayed Score = 77 (rounded to whole number)
+Experience Multiplier = 1.0 + (10 - 1) × (0.25 / 11) = 1.0 + 9 × 0.0227 = 1.205
+Final Score = 53.375 × 1.205 = 64.32
+Displayed Score = 64 (rounded to whole number)
 ```
 
 ---
@@ -233,13 +233,13 @@ Recalculated Stats:
 Recalculated Score:
   - Base Score = (12,000/100,000)×35 + 1.3×25 + (100/1,000)×25 + 0.40×15
   - Base Score = 4.2 + 32.5 + 2.5 + 6 = 45.2
-  - Experience Multiplier = 1.0 + (4-1)×0.05 = 1.15
-  - New Score = 45.2 × 1.15 = 51.98
-  - Displayed: 52
+  - Experience Multiplier = 1.0 + (4-1)×(0.25/11) = 1.0 + 3×0.0227 = 1.068
+  - New Score = 45.2 × 1.068 = 48.27
+  - Displayed: 48
 
 Comparison: Against OTHER characters' Sparking! AI performance
   - Maybe other Sparking! users have scores of 35-60
-  - Burter's 52 might be "Average" in this context
+  - Burter's 48 might be "Average" in this context
 
 Result: � Yellow "Average"
 ```
@@ -248,9 +248,9 @@ Result: � Yellow "Average"
 
 1. **Match Count:** 10 → 4 (only Sparking! matches)
 2. **Stats:** All averages recalculated from 4 matches instead of 10
-3. **Score:** 45 → 52 (actually performs better with Sparking! when only those matches are counted!)
+3. **Score:** 45 → 48 (actually performs better with Sparking! when only those matches are counted!)
 4. **Comparison Group:** All characters → Only characters with Sparking! matches
-5. **Experience Multiplier:** 1.45x → 1.15x (fewer matches = lower confidence)
+5. **Experience Multiplier:** 1.205x → 1.068x (fewer matches = lower confidence)
 
 **Key Insight:** Burter's overall score was dragged down by poor "Combos" performances. When isolated to just "Sparking!" matches, his score actually improved!
 
@@ -326,7 +326,7 @@ Result: � Yellow "Average"
 **Reality:** 
 - More matches increase the **reliability** (experience multiplier)
 - But if those matches were bad performances, the score goes down
-- Experience multiplier maxes at 1.5x (10+ matches)
+- Experience multiplier maxes at 1.25x (12+ matches)
 
 ### ❌ "Green star means they're the best"
 **Reality:**
