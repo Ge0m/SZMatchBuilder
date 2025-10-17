@@ -161,9 +161,10 @@ const DataTable = ({
             {showColumnControls && (
               <button
                 onClick={() => setShowColumnSettings(!showColumnSettings)}
-                className={`p-2 rounded-md transition-colors ${
+                className={`p-2 rounded-md transition-colors 
+                ${
                   darkMode 
-                    ? 'hover:bg-gray-700 text-gray-300' 
+                    ? 'bg-gray-700 hover:bg-gray-600 text-gray-300' 
                     : 'hover:bg-gray-100 text-gray-600'
                 }`}
                 title="Column Settings"
@@ -176,8 +177,8 @@ const DataTable = ({
                 onClick={handleExport}
                 className={`px-3 py-2 rounded-md text-sm font-medium transition-colors ${
                   darkMode
-                    ? 'bg-blue-600 text-white hover:bg-blue-700'
-                    : 'bg-blue-500 text-white hover:bg-blue-600'
+                    ? 'bg-green-700 text-white hover:bg-green-800'
+                    : 'bg-green-500 text-white hover:bg-green-600'
                 }`}
               >
                 <Download className="w-4 h-4 inline mr-1" />
@@ -222,9 +223,33 @@ const DataTable = ({
           <div className={`mb-4 p-3 rounded-md border ${
             darkMode ? 'bg-gray-700 border-gray-600' : 'bg-gray-50 border-gray-200'
           }`}>
-            <h4 className={`text-sm font-medium mb-2 ${darkMode ? 'text-white' : 'text-gray-900'}`}>
-              Column Visibility
-            </h4>
+            <div className="flex items-center justify-between mb-3">
+              <h4 className={`text-sm font-medium ${darkMode ? 'text-white' : 'text-gray-900'}`}>
+                Column Visibility
+              </h4>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => setVisibleColumns(columns.reduce((acc, col) => ({ ...acc, [col.key]: true }), {}))}
+                  className={`px-3 py-1 text-xs rounded-md transition-colors ${
+                    darkMode
+                      ? 'bg-gray-700 text-white hover:bg-gray-600'
+                      : 'bg-gray-500 text-white hover:bg-gray-600'
+                  }`}
+                >
+                  Select All
+                </button>
+                <button
+                  onClick={() => setVisibleColumns(columns.reduce((acc, col) => ({ ...acc, [col.key]: false }), {}))}
+                  className={`px-3 py-1 text-xs rounded-md transition-colors ${
+                    darkMode
+                      ? 'bg-gray-700 text-white hover:bg-gray-600'
+                      : 'bg-gray-400 text-white hover:bg-gray-500'
+                  }`}
+                >
+                  Unselect All
+                </button>
+              </div>
+            </div>
             <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2">
               {columns.map(col => (
                 <label key={col.key} className="flex items-center">
@@ -250,7 +275,7 @@ const DataTable = ({
           <thead className={`${darkMode ? 'bg-gray-700' : 'bg-gray-50'}`}>
             <tr>
               {selectable && (
-                <th className="w-12 px-4 py-3">
+                <th className={`w-12 px-3 py-2 ${darkMode ? 'bg-gray-700' : 'bg-gray-50'}`}>
                   <input
                     type="checkbox"
                     checked={selectedRows.size === processedData.length && processedData.length > 0}
@@ -262,9 +287,10 @@ const DataTable = ({
               {visibleColumnsList.map(col => (
                 <th 
                   key={col.key}
-                  className={`px-4 py-3 text-left text-sm font-medium ${
+                  className={`px-3 py-2 text-left text-sm font-medium ${darkMode ? 'bg-gray-700' : 'bg-gray-50'} ${
                     darkMode ? 'text-gray-300' : 'text-gray-700'
                   } ${col.sortable !== false ? 'cursor-pointer hover:bg-opacity-80' : ''}`}
+                  style={{ minWidth: '120px' }}
                   onClick={col.sortable !== false ? () => handleSort(col.key) : undefined}
                 >
                   <div className="flex items-center gap-2">
@@ -310,14 +336,14 @@ const DataTable = ({
             {paginatedData.map((row, index) => (
               <tr 
                 key={index}
-                className={`${
+                className={`${darkMode ? 'hover:bg-gray-700' : 'hover:bg-gray-50'} ${
                   selectedRows.has(startIndex + index)
-                    ? darkMode ? 'bg-blue-900/50' : 'bg-blue-50'
+                    ? darkMode ? 'bg-gray-900' : 'bg-blue-50'
                     : darkMode ? 'hover:bg-gray-700' : 'hover:bg-gray-50'
                 } transition-colors`}
               >
                 {selectable && (
-                  <td className="px-4 py-3">
+                  <td className="px-3 py-1.5">
                     <input
                       type="checkbox"
                       checked={selectedRows.has(startIndex + index)}
@@ -329,7 +355,8 @@ const DataTable = ({
                 {visibleColumnsList.map(col => (
                   <td 
                     key={col.key}
-                    className={`px-4 py-3 text-sm ${darkMode ? 'text-gray-300' : 'text-gray-900'}`}
+                    className={`px-3 py-1.5 text-sm ${darkMode ? 'text-gray-300' : 'text-gray-900' }`}
+                    style={{ minWidth: '120px' }}
                   >
                     {col.render ? col.render(row, col.accessor ? col.accessor(row) : row[col.key]) : 
                      (col.accessor ? col.accessor(row) : row[col.key])}
@@ -352,10 +379,10 @@ const DataTable = ({
               <button
                 onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
                 disabled={currentPage === 1}
-                className={`px-3 py-1 rounded text-sm ${
+                className={`px-3 py-1 bg-gray-700 rounded text-sm ${
                   currentPage === 1
                     ? darkMode ? 'text-gray-600 cursor-not-allowed' : 'text-gray-400 cursor-not-allowed'
-                    : darkMode ? 'text-gray-300 hover:bg-gray-700' : 'text-gray-700 hover:bg-gray-100'
+                    : darkMode ? 'text-gray-300 hover:bg-gray-600' : 'text-gray-700 hover:bg-gray-100'
                 }`}
               >
                 Previous
@@ -366,10 +393,10 @@ const DataTable = ({
               <button
                 onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
                 disabled={currentPage === totalPages}
-                className={`px-3 py-1 rounded text-sm ${
+                className={`px-3 py-1 bg-gray-700 rounded text-sm ${
                   currentPage === totalPages
                     ? darkMode ? 'text-gray-600 cursor-not-allowed' : 'text-gray-400 cursor-not-allowed'
-                    : darkMode ? 'text-gray-300 hover:bg-gray-700' : 'text-gray-700 hover:bg-gray-100'
+                    : darkMode ? 'text-gray-300 hover:bg-gray-600' : 'text-gray-700 hover:bg-gray-100'
                 }`}
               >
                 Next

@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import './App.css';
 import { 
   Trophy, 
@@ -27,20 +27,25 @@ import {
   Search,
   X,
   ArrowUpDown,
-  Filter
+  Filter,
+  Download
 } from 'lucide-react';
 
 // Import new components
 import DataTable from './components/DataTable.jsx';
-import ExportManager from './components/ExportManager.jsx';
 import { 
-  getCharacterTableConfig, 
+  getCharacterTableConfig,
+  getCharacterAveragesTableConfig,
+  getMatchDetailsTableConfig,
   getPositionTableConfig, 
   getMetaTableConfig,
   prepareCharacterData,
+  prepareCharacterAveragesData,
+  prepareMatchDetailsData,
   preparePositionData,
   prepareMetaData
 } from './components/TableConfigs.jsx';
+import { exportToExcel } from './utils/excelExport.js';
 
 // Dynamically import all JSON files in BR_Data
 const dataFiles = import.meta.glob('../BR_Data/*.json', { eager: true });
@@ -228,6 +233,8 @@ function extractStats(char, charMap, capsuleMap = {}, position = null) {
   const play = char.battlePlayCharacter || {};
   const count = char.battleCount || {};
   const numCount = count.battleNumCount || {};
+  const runBlastCount = count.runBlastCount || {};
+  const attackHitCount = count.attackHitCount || {};
   const originalForm = char.battlePlayCharacter?.originalCharacter?.key;
   const currentForm = play.character?.key;
   const charId = originalForm || currentForm || '';
@@ -240,39 +247,80 @@ function extractStats(char, charMap, capsuleMap = {}, position = null) {
     formNames = forms.map(f => charMap[f] || f).join(', ');
   }
   
-  // Equipment analysis
+  // Equipment analysis - filter to ONLY capsules (00_0_XXXX pattern)
   const equipItems = play.equipItem || [];
   const equippedCapsules = equipItems
     .map(item => item.key)
-    .filter(Boolean)
-    .filter(key => capsuleMap[key]) // Only include items that exist in our filtered capsuleMap
+    .filter(key => key && key.startsWith('00_0_')) // Only include actual capsules
+    .filter(key => capsuleMap[key]) // Only include capsules in our reference data
     .map(key => ({
       id: key,
+      name: capsuleMap[key].name,
       capsule: capsuleMap[key]
     }));
   
   const totalCapsuleCost = equippedCapsules.reduce((sum, item) => sum + (item.capsule.cost || 0), 0);
   
-  // Categorize capsules by type
+  // Categorize capsules by type based on their effect
   const capsuleTypes = {
-    damage: equippedCapsules.filter(item => 
-      item.capsule.name?.toLowerCase().includes('attack') || 
-      item.capsule.name?.toLowerCase().includes('damage') ||
-      item.capsule.name?.toLowerCase().includes('blast')
-    ).length,
-    defensive: equippedCapsules.filter(item => 
-      item.capsule.name?.toLowerCase().includes('guard') || 
-      item.capsule.name?.toLowerCase().includes('defense') ||
-      item.capsule.name?.toLowerCase().includes('body') ||
-      item.capsule.name?.toLowerCase().includes('training')
-    ).length,
-    utility: equippedCapsules.filter(item => 
-      item.capsule.name?.toLowerCase().includes('ki') || 
-      item.capsule.name?.toLowerCase().includes('movement') ||
-      item.capsule.name?.toLowerCase().includes('dash') ||
-      item.capsule.name?.toLowerCase().includes('transformation')
-    ).length
+    damage: equippedCapsules.filter(item => {
+      const name = item.capsule.name?.toLowerCase() || '';
+      const effect = item.capsule.effect?.toLowerCase() || '';
+      return name.includes('attack boost') || 
+             name.includes('damage') || 
+             effect.includes('damage increase') ||
+             effect.includes('attack damage') ||
+             name.includes('blast') ||
+             name.includes('power');
+    }).length,
+    defensive: equippedCapsules.filter(item => {
+      const name = item.capsule.name?.toLowerCase() || '';
+      const effect = item.capsule.effect?.toLowerCase() || '';
+      return name.includes('body') || 
+             name.includes('guard') || 
+             name.includes('defense') ||
+             name.includes('training') ||
+             effect.includes('flinch') ||
+             effect.includes('health');
+    }).length,
+    utility: equippedCapsules.filter(item => {
+      const name = item.capsule.name?.toLowerCase() || '';
+      const effect = item.capsule.effect?.toLowerCase() || '';
+      return name.includes('ki') || 
+             name.includes('speed') ||
+             name.includes('movement') ||
+             name.includes('dash') ||
+             name.includes('sparking') ||
+             effect.includes('ki recovery') ||
+             effect.includes('transformation');
+    }).length
   };
+  
+  // Parse blast counts for detailed super blast tracking
+  let spm1Count = 0;
+  let spm2Count = 0;
+  let exa1Count = 0;
+  let exa2Count = 0;
+  
+  Object.entries(runBlastCount).forEach(([key, value]) => {
+    if (key.includes('SPM1')) spm1Count += value;
+    else if (key.includes('SPM2') || key.includes('SPM3')) spm2Count += value;
+    else if (key.includes('EXA1')) exa1Count += value;
+    else if (key.includes('EXA2')) exa2Count += value;
+  });
+  
+  // Parse attack hit counts for combat performance metrics
+  let speedImpactCount = 0;
+  let speedImpactWins = 0;
+  
+  Object.entries(attackHitCount).forEach(([key, value]) => {
+    // Speed Impact triggers - these indicate speed impact usage
+    if (key.includes('actSPIMPO') || key.includes('actRI')) {
+      speedImpactCount += value;
+    }
+  });
+  
+  // Speed impact wins are tracked in battleNumCount.speedImpactWinCount
   
   return {
     name,
@@ -286,17 +334,31 @@ function extractStats(char, charMap, capsuleMap = {}, position = null) {
     skillsUsed: numCount.eXACount || 0,
     kills: count.killCount || 0,
     formChangeHistory: formNames,
-    // Phase 1: Additional technique usage metrics
+    // Survival & Health metrics
     sparkingCount: numCount.sparkingCount || 0,
     chargeCount: numCount.chargeCount || 0,
     guardCount: numCount.guardCount || 0,
     shotEnergyBulletCount: numCount.shotEnergyBulletCount || 0,
     zCounterCount: numCount.zCounter || 0,
     superCounterCount: numCount.superCounterCount || 0,
-    // Phase 1: Combo performance metrics
+    revengeCounterCount: numCount.revengeCounter || 0,
+    // Special Abilities - detailed blast tracking
+    spm1Count,
+    spm2Count,
+    exa1Count,
+    exa2Count,
+    dragonDashMileage: count.dragonDashMileage || 0,
+    // Combat Performance metrics
     maxComboNum: count.maxComboNum || 0,
     maxComboDamage: count.maxComboDamage || 0,
-    // Phase 2: Position tracking
+    throwCount: numCount.throwCount || 0,
+    lightningAttackCount: numCount.lightningAttack || 0,
+    vanishingAttackCount: numCount.vanishingAttack || 0,
+    dragonHomingCount: numCount.dragonHoming || 0,
+    speedImpactCount: numCount.speedImpactCount || speedImpactCount,
+    speedImpactWins: numCount.speedImpactWinCount || 0,
+    sparkingComboCount: numCount.sparkingCount > 0 ? count.maxComboNum || 0 : 0,
+    // Position tracking
     position: position,
     // Equipment data
     equippedCapsules,
@@ -726,8 +788,19 @@ function getPositionBasedData(files, charMap, capsuleMap = {}) {
     let characterRecord;
     
     // Handle TeamBattleResults format (current BR_Data structure)
-    if (fileContent.TeamBattleResults && fileContent.TeamBattleResults.battleResult) {
-      characterRecord = fileContent.TeamBattleResults.battleResult.characterRecord;
+    if (fileContent.TeamBattleResults) {
+      // Check for battleResult (lowercase r)
+      if (fileContent.TeamBattleResults.battleResult) {
+        characterRecord = fileContent.TeamBattleResults.battleResult.characterRecord;
+      }
+      // Check for BattleResults (capital R) - Cinema files format
+      else if (fileContent.TeamBattleResults.BattleResults) {
+        characterRecord = fileContent.TeamBattleResults.BattleResults.characterRecord;
+      }
+      // Check if data is directly in TeamBattleResults (new wrapper format)
+      else if (fileContent.TeamBattleResults.characterRecord) {
+        characterRecord = fileContent.TeamBattleResults.characterRecord;
+      }
     }
     // Handle new format with teams array at the top
     else if (fileContent.teams && Array.isArray(fileContent.teams)) {
@@ -790,7 +863,7 @@ function getAggregatedCharacterData(files, charMap, capsuleMap = {}, aiStrategie
   const characterStats = {};
   
   // Helper function to process a characterRecord (extracted to avoid duplication)
-  function processCharacterRecord(characterRecord, characterIdRecord, teams = null) {
+  function processCharacterRecord(characterRecord, characterIdRecord, teams = null, fileName = '') {
     Object.keys(characterRecord).forEach(key => {
       const char = characterRecord[key];
       const stats = extractStats(char, charMap, capsuleMap, null); // No position for aggregated data
@@ -798,11 +871,14 @@ function getAggregatedCharacterData(files, charMap, capsuleMap = {}, aiStrategie
       
       // Determine team association
       let teamName = null;
+      let opponentTeam = null;
       if (teams && Array.isArray(teams) && teams.length >= 2) {
         if (key.includes('AlliesTeamMember') || key.includes('１Ｐ')) {
           teamName = teams[0];
+          opponentTeam = teams[1];
         } else if (key.includes('EnemyTeamMember') || key.includes('２Ｐ')) {
           teamName = teams[1];
+          opponentTeam = teams[0];
         }
       }
       
@@ -833,16 +909,39 @@ function getAggregatedCharacterData(files, charMap, capsuleMap = {}, aiStrategie
           totalUltimates: 0,
           totalSkills: 0,
           totalKills: 0,
-          // Phase 1: New technique usage and combo stats
+          // Survival & Health metrics
+          survivalCount: 0,
           totalSparking: 0,
           totalCharges: 0,
           totalGuards: 0,
           totalEnergyBlasts: 0,
           totalZCounters: 0,
           totalSuperCounters: 0,
+          totalRevengeCounters: 0,
+          // Special Abilities - detailed blast tracking
+          totalSPM1: 0,
+          totalSPM2: 0,
+          totalEXA1: 0,
+          totalEXA2: 0,
+          totalDragonDashMileage: 0,
+          // Combat Performance metrics
           maxComboNumTotal: 0,
           maxComboDamageTotal: 0,
+          totalThrows: 0,
+          totalLightningAttacks: 0,
+          totalVanishingAttacks: 0,
+          totalDragonHoming: 0,
+          totalSpeedImpacts: 0,
+          totalSpeedImpactWins: 0,
+          totalSparkingCombo: 0,
           matchCount: 0,
+          // Build & Equipment tracking
+          totalCapsuleCost: 0,
+          totalDamageCaps: 0,
+          totalDefensiveCaps: 0,
+          totalUtilityCaps: 0,
+          buildArchetypes: {}, // Track build archetypes with counts
+          capsuleUsage: {}, // Track individual capsules used
           allFormsUsed: new Set(), // Track all forms used across matches
           formStats: {}, // Track per-form aggregated stats
           matches: [], // Track individual match data for meta analysis
@@ -870,16 +969,72 @@ function getAggregatedCharacterData(files, charMap, capsuleMap = {}, aiStrategie
       charData.totalUltimates += stats.ultimatesUsed;
       charData.totalSkills += stats.skillsUsed;
       charData.totalKills += stats.kills;
-      // Phase 1: New technique usage and combo stats
+      // Survival & Health metrics
+      if (stats.hPGaugeValue > 0) {
+        charData.survivalCount += 1;
+      }
       charData.totalSparking += stats.sparkingCount;
       charData.totalCharges += stats.chargeCount;
       charData.totalGuards += stats.guardCount;
       charData.totalEnergyBlasts += stats.shotEnergyBulletCount;
       charData.totalZCounters += stats.zCounterCount;
       charData.totalSuperCounters += stats.superCounterCount;
+      charData.totalRevengeCounters += stats.revengeCounterCount;
+      // Special Abilities - detailed blast tracking
+      charData.totalSPM1 += stats.spm1Count;
+      charData.totalSPM2 += stats.spm2Count;
+      charData.totalEXA1 += stats.exa1Count;
+      charData.totalEXA2 += stats.exa2Count;
+      charData.totalDragonDashMileage += stats.dragonDashMileage;
+      // Combat Performance metrics
       charData.maxComboNumTotal += stats.maxComboNum;
       charData.maxComboDamageTotal += stats.maxComboDamage;
+      charData.totalThrows += stats.throwCount;
+      charData.totalLightningAttacks += stats.lightningAttackCount;
+      charData.totalVanishingAttacks += stats.vanishingAttackCount;
+      charData.totalDragonHoming += stats.dragonHomingCount;
+      charData.totalSpeedImpacts += stats.speedImpactCount;
+      charData.totalSpeedImpactWins += stats.speedImpactWins;
+      charData.totalSparkingCombo += stats.sparkingComboCount;
       charData.matchCount += 1;
+      
+      // Build & Equipment tracking
+      charData.totalCapsuleCost += stats.totalCapsuleCost || 0;
+      charData.totalDamageCaps += stats.capsuleTypes?.damage || 0;
+      charData.totalDefensiveCaps += stats.capsuleTypes?.defensive || 0;
+      charData.totalUtilityCaps += stats.capsuleTypes?.utility || 0;
+      
+      // Track build archetype usage
+      if (stats.buildArchetype) {
+        charData.buildArchetypes[stats.buildArchetype] = (charData.buildArchetypes[stats.buildArchetype] || 0) + 1;
+      }
+      
+      // Track individual capsules used
+      if (stats.equippedCapsules && Array.isArray(stats.equippedCapsules)) {
+        stats.equippedCapsules.forEach(capsule => {
+          if (capsule.id) {
+            if (!charData.capsuleUsage[capsule.id]) {
+              charData.capsuleUsage[capsule.id] = {
+                id: capsule.id,
+                name: capsule.name,
+                count: 0
+              };
+            }
+            charData.capsuleUsage[capsule.id].count += 1;
+          }
+        });
+      }
+      
+      // Extract form change history
+      let formChangeHistory = '—';
+      let formChangeCount = 0;
+      if (Array.isArray(char.formChangeHistory) && char.formChangeHistory.length > 0) {
+        formChangeHistory = char.formChangeHistory.map(form => charMap[form.key] || form.key).join(' → ');
+        formChangeCount = char.formChangeHistory.length; // Count number of transformations
+      }
+      
+      // Determine win/loss status (character survived = won)
+      const won = stats.hPGaugeValue > 0;
       
       // Add individual match data for meta analysis
       charData.matches.push({
@@ -893,6 +1048,7 @@ function getAggregatedCharacterData(files, charMap, capsuleMap = {}, aiStrategie
         capsuleTypes: stats.capsuleTypes,
         equippedCapsules: stats.equippedCapsules,
         team: teamName,
+        opponentTeam: opponentTeam,
         aiStrategy: aiStrategy,
         kills: stats.kills,
         specialMovesUsed: stats.specialMovesUsed,
@@ -904,8 +1060,25 @@ function getAggregatedCharacterData(files, charMap, capsuleMap = {}, aiStrategie
         shotEnergyBulletCount: stats.shotEnergyBulletCount,
         zCounterCount: stats.zCounterCount,
         superCounterCount: stats.superCounterCount,
+        revengeCounterCount: stats.revengeCounterCount,
+        spm1Count: stats.spm1Count,
+        spm2Count: stats.spm2Count,
+        exa1Count: stats.exa1Count,
+        exa2Count: stats.exa2Count,
+        dragonDashMileage: stats.dragonDashMileage,
         maxComboNum: stats.maxComboNum,
-        maxComboDamage: stats.maxComboDamage
+        maxComboDamage: stats.maxComboDamage,
+        throwCount: stats.throwCount,
+        lightningAttackCount: stats.lightningAttackCount,
+        vanishingAttackCount: stats.vanishingAttackCount,
+        dragonHomingCount: stats.dragonHomingCount,
+        speedImpactCount: stats.speedImpactCount,
+        speedImpactWins: stats.speedImpactWins,
+        sparkingComboCount: stats.sparkingComboCount,
+        formChangeHistory: formChangeHistory,
+        formChangeCount: formChangeCount,
+        won: won,
+        fileName: fileName
       });
       
       // Track all forms used
@@ -967,13 +1140,27 @@ function getAggregatedCharacterData(files, charMap, capsuleMap = {}, aiStrategie
   files.forEach(file => {
     if (file.error) return;
     
+    const fileName = file.name || file.fileName || '';
     let characterRecord, characterIdRecord, teams;
     
     // Handle TeamBattleResults format (current BR_Data structure)
-    if (file.content.TeamBattleResults && file.content.TeamBattleResults.battleResult) {
-      characterRecord = file.content.TeamBattleResults.battleResult.characterRecord;
-      characterIdRecord = file.content.TeamBattleResults.battleResult.characterIdRecord;
+    if (file.content.TeamBattleResults) {
       teams = file.content.TeamBattleResults.teams;
+      // Check for battleResult (lowercase r)
+      if (file.content.TeamBattleResults.battleResult) {
+        characterRecord = file.content.TeamBattleResults.battleResult.characterRecord;
+        characterIdRecord = file.content.TeamBattleResults.battleResult.characterIdRecord;
+      }
+      // Check for BattleResults (capital R) - Cinema files format
+      else if (file.content.TeamBattleResults.BattleResults) {
+        characterRecord = file.content.TeamBattleResults.BattleResults.characterRecord;
+        characterIdRecord = file.content.TeamBattleResults.BattleResults.characterIdRecord;
+      }
+      // Check if data is directly in TeamBattleResults (new wrapper format)
+      else if (file.content.TeamBattleResults.characterRecord) {
+        characterRecord = file.content.TeamBattleResults.characterRecord;
+        characterIdRecord = file.content.TeamBattleResults.characterIdRecord;
+      }
     }
     // Handle new format with teams array at the top
     else if (file.content.teams && Array.isArray(file.content.teams)) {
@@ -990,7 +1177,7 @@ function getAggregatedCharacterData(files, charMap, capsuleMap = {}, aiStrategie
         }
         
         if (teamCharRecord) {
-          processCharacterRecord(teamCharRecord, teamCharIdRecord, file.content.teams);
+          processCharacterRecord(teamCharRecord, teamCharIdRecord, file.content.teams, fileName);
         }
       });
       return; // Already processed all teams
@@ -1010,7 +1197,7 @@ function getAggregatedCharacterData(files, charMap, capsuleMap = {}, aiStrategie
     
     if (!characterRecord) return;
     
-    processCharacterRecord(characterRecord, characterIdRecord, teams);
+    processCharacterRecord(characterRecord, characterIdRecord, teams, fileName);
   });
   
   // Calculate averages and format form history
@@ -1064,15 +1251,46 @@ function getAggregatedCharacterData(files, charMap, capsuleMap = {}, aiStrategie
       avgUltimates: Math.round((char.totalUltimates / char.matchCount) * 10) / 10,
       avgSkills: Math.round((char.totalSkills / char.matchCount) * 10) / 10,
       avgKills: Math.round((char.totalKills / char.matchCount) * 10) / 10,
-      // Phase 1: New technique usage and combo averages
+      // Survival & Health averages
+      survivalRate: Math.round((char.survivalCount / char.matchCount) * 1000) / 10, // % of matches survived
       avgSparking: Math.round((char.totalSparking / char.matchCount) * 10) / 10,
       avgCharges: Math.round((char.totalCharges / char.matchCount) * 10) / 10,
       avgGuards: Math.round((char.totalGuards / char.matchCount) * 10) / 10,
       avgEnergyBlasts: Math.round((char.totalEnergyBlasts / char.matchCount) * 10) / 10,
       avgZCounters: Math.round((char.totalZCounters / char.matchCount) * 10) / 10,
       avgSuperCounters: Math.round((char.totalSuperCounters / char.matchCount) * 10) / 10,
+      avgRevengeCounters: Math.round((char.totalRevengeCounters / char.matchCount) * 10) / 10,
+      // Special Abilities - detailed blast averages
+      avgSPM1: Math.round((char.totalSPM1 / char.matchCount) * 10) / 10,
+      avgSPM2: Math.round((char.totalSPM2 / char.matchCount) * 10) / 10,
+      avgEXA1: Math.round((char.totalEXA1 / char.matchCount) * 10) / 10,
+      avgEXA2: Math.round((char.totalEXA2 / char.matchCount) * 10) / 10,
+      avgDragonDashMileage: Math.round((char.totalDragonDashMileage / char.matchCount) * 10) / 10,
+      // Combat Performance averages
       avgMaxCombo: Math.round((char.maxComboNumTotal / char.matchCount) * 10) / 10,
-      avgMaxComboDamage: Math.round(char.maxComboDamageTotal / char.matchCount)
+      avgMaxComboDamage: Math.round(char.maxComboDamageTotal / char.matchCount),
+      avgThrows: Math.round((char.totalThrows / char.matchCount) * 10) / 10,
+      avgLightningAttacks: Math.round((char.totalLightningAttacks / char.matchCount) * 10) / 10,
+      avgVanishingAttacks: Math.round((char.totalVanishingAttacks / char.matchCount) * 10) / 10,
+      avgDragonHoming: Math.round((char.totalDragonHoming / char.matchCount) * 10) / 10,
+      avgSpeedImpacts: Math.round((char.totalSpeedImpacts / char.matchCount) * 10) / 10,
+      avgSpeedImpactWins: Math.round((char.totalSpeedImpactWins / char.matchCount) * 10) / 10,
+      avgSparkingCombo: Math.round((char.totalSparkingCombo / char.matchCount) * 10) / 10,
+      // Build & Equipment averages
+      avgCapsuleCost: Math.round(char.totalCapsuleCost / char.matchCount),
+      avgDamageCaps: Math.round((char.totalDamageCaps / char.matchCount) * 10) / 10,
+      avgDefensiveCaps: Math.round((char.totalDefensiveCaps / char.matchCount) * 10) / 10,
+      avgUtilityCaps: Math.round((char.totalUtilityCaps / char.matchCount) * 10) / 10,
+      // Most used build archetype
+      primaryBuildArchetype: Object.keys(char.buildArchetypes).length > 0
+        ? Object.keys(char.buildArchetypes).reduce((a, b) => 
+            char.buildArchetypes[a] > char.buildArchetypes[b] ? a : b)
+        : 'No Build',
+      // Most used capsules (top 7)
+      topCapsules: Object.values(char.capsuleUsage)
+        .sort((a, b) => b.count - a.count)
+        .slice(0, 7)
+        .map(c => ({ id: c.id, name: c.name, usage: c.count }))
     };
   }).map(char => {
     // Calculate combat performance score
@@ -1091,9 +1309,9 @@ function getAggregatedCharacterData(files, charMap, capsuleMap = {}, aiStrategie
       (healthRetention) * 15             // Health retention weight: 15%
     );
     
-    // Experience multiplier based on matches played (1.0 to 1.5x)
+    // Experience multiplier based on matches played (1.0 to 1.25x, maxed at 12 matches)
     // Characters with more matches get slightly higher weight
-    const experienceMultiplier = Math.min(1.5, 1.0 + (char.matchCount - 1) * 0.05);
+    const experienceMultiplier = Math.min(1.25, 1.0 + (char.matchCount - 1) * (0.25 / 11));
     
     // Final combat performance score
     const combatPerformanceScore = baseScore * experienceMultiplier;
@@ -1127,8 +1345,21 @@ function getTeamAggregatedData(files, charMap, capsuleMap = {}) {
     // Handle TeamBattleResults format (current BR_Data structure)
     if (file.content.TeamBattleResults) {
       teams = file.content.TeamBattleResults.teams;
-      battleWinLose = file.content.TeamBattleResults.battleResult?.battleWinLose;
-      characterRecord = file.content.TeamBattleResults.battleResult?.characterRecord;
+      // Check for battleResult (lowercase r)
+      if (file.content.TeamBattleResults.battleResult) {
+        battleWinLose = file.content.TeamBattleResults.battleResult.battleWinLose;
+        characterRecord = file.content.TeamBattleResults.battleResult.characterRecord;
+      }
+      // Check for BattleResults (capital R) - Cinema files format
+      else if (file.content.TeamBattleResults.BattleResults) {
+        battleWinLose = file.content.TeamBattleResults.BattleResults.battleWinLose;
+        characterRecord = file.content.TeamBattleResults.BattleResults.characterRecord;
+      }
+      // Check if data is directly in TeamBattleResults (new wrapper format)
+      else if (file.content.TeamBattleResults.battleWinLose && file.content.TeamBattleResults.characterRecord) {
+        battleWinLose = file.content.TeamBattleResults.battleWinLose;
+        characterRecord = file.content.TeamBattleResults.characterRecord;
+      }
     }
     // Handle other formats
     else if (file.content.teams && Array.isArray(file.content.teams)) {
@@ -1152,8 +1383,22 @@ function getTeamAggregatedData(files, charMap, capsuleMap = {}) {
     const team1Name = teams[0];
     const team2Name = teams[1];
     
+    // Check if team names are valid (not empty, null, undefined, or just whitespace)
+    const isTeam1Valid = team1Name && typeof team1Name === 'string' && team1Name.trim() !== '';
+    const isTeam2Valid = team2Name && typeof team2Name === 'string' && team2Name.trim() !== '';
+    
+    // Skip entirely if both teams are invalid
+    if (!isTeam1Valid && !isTeam2Valid) {
+      return;
+    }
+    
+    // Determine which teams to process (only valid ones)
+    const teamsToProcess = [];
+    if (isTeam1Valid) teamsToProcess.push({ name: team1Name, isTeam1: true });
+    if (isTeam2Valid) teamsToProcess.push({ name: team2Name, isTeam1: false });
+    
     // Initialize team stats if they don't exist
-    [team1Name, team2Name].forEach(teamName => {
+    teamsToProcess.forEach(({ name: teamName }) => {
       if (!teamStats[teamName]) {
         teamStats[teamName] = {
           teamName,
@@ -1189,33 +1434,36 @@ function getTeamAggregatedData(files, charMap, capsuleMap = {}) {
     const team1Won = battleWinLose === 'Win';
     const team2Won = battleWinLose === 'Lose';
     
-    // Update win/loss records
-    teamStats[team1Name].matches++;
-    teamStats[team2Name].matches++;
-    
-    if (team1Won) {
-      teamStats[team1Name].wins++;
-      teamStats[team2Name].losses++;
-    } else if (team2Won) {
-      teamStats[team1Name].losses++;
-      teamStats[team2Name].wins++;
+    // Update win/loss records only for valid teams
+    if (isTeam1Valid) {
+      teamStats[team1Name].matches++;
+      if (team1Won) teamStats[team1Name].wins++;
+      else if (team2Won) teamStats[team1Name].losses++;
     }
     
-    // Initialize opponent records
-    if (!teamStats[team1Name].opponentRecords[team2Name]) {
-      teamStats[team1Name].opponentRecords[team2Name] = { wins: 0, losses: 0 };
-    }
-    if (!teamStats[team2Name].opponentRecords[team1Name]) {
-      teamStats[team2Name].opponentRecords[team1Name] = { wins: 0, losses: 0 };
+    if (isTeam2Valid) {
+      teamStats[team2Name].matches++;
+      if (team2Won) teamStats[team2Name].wins++;
+      else if (team1Won) teamStats[team2Name].losses++;
     }
     
-    // Update head-to-head records
-    if (team1Won) {
-      teamStats[team1Name].opponentRecords[team2Name].wins++;
-      teamStats[team2Name].opponentRecords[team1Name].losses++;
-    } else if (team2Won) {
-      teamStats[team1Name].opponentRecords[team2Name].losses++;
-      teamStats[team2Name].opponentRecords[team1Name].wins++;
+    // Initialize opponent records only if both teams are valid
+    if (isTeam1Valid && isTeam2Valid) {
+      if (!teamStats[team1Name].opponentRecords[team2Name]) {
+        teamStats[team1Name].opponentRecords[team2Name] = { wins: 0, losses: 0 };
+      }
+      if (!teamStats[team2Name].opponentRecords[team1Name]) {
+        teamStats[team2Name].opponentRecords[team1Name] = { wins: 0, losses: 0 };
+      }
+      
+      // Update head-to-head records
+      if (team1Won) {
+        teamStats[team1Name].opponentRecords[team2Name].wins++;
+        teamStats[team2Name].opponentRecords[team1Name].losses++;
+      } else if (team2Won) {
+        teamStats[team1Name].opponentRecords[team2Name].losses++;
+        teamStats[team2Name].opponentRecords[team1Name].wins++;
+      }
     }
     
     // Process character data for both teams
@@ -1223,20 +1471,25 @@ function getTeamAggregatedData(files, charMap, capsuleMap = {}) {
     const p1TeamStats = getTeamStats(teams_data.p1, charMap, capsuleMap);
     const p2TeamStats = getTeamStats(teams_data.p2, charMap, capsuleMap);
     
-    // Aggregate team 1 stats
-    teamStats[team1Name].totalDamageDealt += p1TeamStats.totalDamage;
-    teamStats[team1Name].totalDamageTaken += p1TeamStats.totalTaken;
-    teamStats[team1Name].totalHealthRemaining += p1TeamStats.totalHealth;
-    teamStats[team1Name].totalHealthMax += p1TeamStats.totalHPGaugeValueMax;
+    // Aggregate team 1 stats only if valid
+    if (isTeam1Valid) {
+      teamStats[team1Name].totalDamageDealt += p1TeamStats.totalDamage;
+      teamStats[team1Name].totalDamageTaken += p1TeamStats.totalTaken;
+      teamStats[team1Name].totalHealthRemaining += p1TeamStats.totalHealth;
+      teamStats[team1Name].totalHealthMax += p1TeamStats.totalHPGaugeValueMax;
+    }
     
-    // Aggregate team 2 stats  
-    teamStats[team2Name].totalDamageDealt += p2TeamStats.totalDamage;
-    teamStats[team2Name].totalDamageTaken += p2TeamStats.totalTaken;
-    teamStats[team2Name].totalHealthRemaining += p2TeamStats.totalHealth;
-    teamStats[team2Name].totalHealthMax += p2TeamStats.totalHPGaugeValueMax;
+    // Aggregate team 2 stats only if valid
+    if (isTeam2Valid) {
+      teamStats[team2Name].totalDamageDealt += p2TeamStats.totalDamage;
+      teamStats[team2Name].totalDamageTaken += p2TeamStats.totalTaken;
+      teamStats[team2Name].totalHealthRemaining += p2TeamStats.totalHealth;
+      teamStats[team2Name].totalHealthMax += p2TeamStats.totalHPGaugeValueMax;
+    }
     
-    // Track character usage
-    teams_data.p1.forEach(char => {
+    // Track character usage for team 1 only if valid
+    if (isTeam1Valid) {
+      teams_data.p1.forEach(char => {
       const stats = extractStats(char, charMap, capsuleMap);
       if (stats.name && stats.name !== '-') {
         teamStats[team1Name].charactersUsed.add(stats.name);
@@ -1267,8 +1520,11 @@ function getTeamAggregatedData(files, charMap, capsuleMap = {}) {
         }
       }
     });
+    }
     
-    teams_data.p2.forEach(char => {
+    // Track character usage for team 2 only if valid
+    if (isTeam2Valid) {
+      teams_data.p2.forEach(char => {
       const stats = extractStats(char, charMap, capsuleMap);
       if (stats.name && stats.name !== '-') {
         teamStats[team2Name].charactersUsed.add(stats.name);
@@ -1299,27 +1555,32 @@ function getTeamAggregatedData(files, charMap, capsuleMap = {}) {
         }
       }
     });
+    }
     
-    // Add match history
-    teamStats[team1Name].matchHistory.push({
-      opponent: team2Name,
-      result: team1Won ? 'Win' : 'Loss',
-      damageDealt: p1TeamStats.totalDamage,
-      damageTaken: p1TeamStats.totalTaken,
-      healthRemaining: p1TeamStats.totalHealth,
-      healthMax: p1TeamStats.totalHPGaugeValueMax,
-      fileName: file.name
-    });
+    // Add match history only for valid teams
+    if (isTeam1Valid) {
+      teamStats[team1Name].matchHistory.push({
+        opponent: isTeam2Valid ? team2Name : 'Unknown',
+        result: team1Won ? 'Win' : 'Loss',
+        damageDealt: p1TeamStats.totalDamage,
+        damageTaken: p1TeamStats.totalTaken,
+        healthRemaining: p1TeamStats.totalHealth,
+        healthMax: p1TeamStats.totalHPGaugeValueMax,
+        fileName: file.name
+      });
+    }
     
-    teamStats[team2Name].matchHistory.push({
-      opponent: team1Name,
-      result: team2Won ? 'Win' : 'Loss',
-      damageDealt: p2TeamStats.totalDamage,
-      damageTaken: p2TeamStats.totalTaken,
-      healthRemaining: p2TeamStats.totalHealth,
-      healthMax: p2TeamStats.totalHPGaugeValueMax,
-      fileName: file.name
-    });
+    if (isTeam2Valid) {
+      teamStats[team2Name].matchHistory.push({
+        opponent: isTeam1Valid ? team1Name : 'Unknown',
+        result: team2Won ? 'Win' : 'Loss',
+        damageDealt: p2TeamStats.totalDamage,
+        damageTaken: p2TeamStats.totalTaken,
+        healthRemaining: p2TeamStats.totalHealth,
+        healthMax: p2TeamStats.totalHPGaugeValueMax,
+        fileName: file.name
+      });
+    }
   });
   
   // Calculate final statistics and format data
@@ -1367,8 +1628,8 @@ function getTeamAggregatedData(files, charMap, capsuleMap = {}) {
           (healthRetention) * 15                   // Health retention weight: 15%
         );
         
-        // Experience multiplier based on matches played (1.0 to 1.5x)
-        const experienceMultiplier = Math.min(1.5, 1.0 + (matchCount - 1) * 0.05);
+        // Experience multiplier based on matches played (1.0 to 1.25x, maxed at 12 matches)
+        const experienceMultiplier = Math.min(1.25, 1.0 + (matchCount - 1) * (0.25 / 11));
         const performanceScore = Math.round((baseScore * experienceMultiplier) * 100) / 100;
         
         team.characterAverages[charName] = {
@@ -1439,7 +1700,14 @@ export default function App() {
   const [sortBy, setSortBy] = useState('combatScore');
   const [sortDirection, setSortDirection] = useState('desc');
   const [selectedTeams, setSelectedTeams] = useState([]);
+  const [teamSearchInput, setTeamSearchInput] = useState('');
   const [selectedAIStrategies, setSelectedAIStrategies] = useState([]);
+  const [aiStrategySearchInput, setAIStrategySearchInput] = useState('');
+
+  // Combobox state for searchable file selection
+  const [comboboxInput, setComboboxInput] = useState(selectedFile || '');
+  const [comboboxOpen, setComboboxOpen] = useState(false);
+  const [comboboxHighlightedIndex, setComboboxHighlightedIndex] = useState(-1);
 
   const charMap = useMemo(() => parseCharacterCSV(charactersCSV), []);
   const { capsules: capsuleMap, aiStrategies } = useMemo(() => parseCapsules(capsulesCSV), []);
@@ -1600,8 +1868,8 @@ export default function App() {
         (healthRetention) * 15              // Health retention weight: 15%
       );
       
-      // Experience multiplier based on matches played (1.0 to 1.5x)
-      const experienceMultiplier = Math.min(1.5, 1.0 + (matchCount - 1) * 0.05);
+      // Experience multiplier based on matches played (1.0 to 1.25x, maxed at 12 matches)
+      const experienceMultiplier = Math.min(1.25, 1.0 + (matchCount - 1) * (0.25 / 11));
       const combatPerformanceScore = baseScore * experienceMultiplier;
       
       return {
@@ -1759,6 +2027,11 @@ export default function App() {
     setExpandedRows({}); // Reset expanded state on file change
   };
 
+  // keep combobox input synced with selectedFile
+  useEffect(() => {
+    setComboboxInput(selectedFile || '');
+  }, [selectedFile]);
+
   const processFiles = (files) => {
     Promise.all(files.map(file => {
       return new Promise((resolve) => {
@@ -1827,6 +2100,79 @@ export default function App() {
     setExpandedRows({});
   };
 
+  // Handler for Excel export
+  const handleExcelExport = async () => {
+    try {
+      const characterData = prepareCharacterAveragesData(aggregatedData);
+      const matchData = prepareMatchDetailsData(aggregatedData);
+      
+      const result = await exportToExcel(characterData, matchData, {
+        filename: `DBSZ_Analysis_${new Date().toISOString().split('T')[0]}.xlsx`,
+        includeCharacterAverages: true,
+        includeMatchDetails: true,
+        includeFormatting: true
+      });
+      
+      if (result.success) {
+        console.log('Excel export successful:', result.filename);
+      } else {
+        console.error('Excel export failed:', result.error);
+        alert(`Export failed: ${result.error}`);
+      }
+    } catch (error) {
+      console.error('Export error:', error);
+      alert(`Export failed: ${error.message}`);
+    }
+  };
+
+  // Handler for Character Averages export only
+  const handleCharacterAveragesExport = async () => {
+    try {
+      const characterData = prepareCharacterAveragesData(aggregatedData);
+      
+      const result = await exportToExcel(characterData, [], {
+        filename: `Character_Averages_${new Date().toISOString().split('T')[0]}.xlsx`,
+        includeCharacterAverages: true,
+        includeMatchDetails: false,
+        includeFormatting: true
+      });
+      
+      if (result.success) {
+        console.log('Character Averages export successful:', result.filename);
+      } else {
+        console.error('Export failed:', result.error);
+        alert(`Export failed: ${result.error}`);
+      }
+    } catch (error) {
+      console.error('Export error:', error);
+      alert(`Export failed: ${error.message}`);
+    }
+  };
+
+  // Handler for Match Details export only
+  const handleMatchDetailsExport = async () => {
+    try {
+      const matchData = prepareMatchDetailsData(aggregatedData);
+      
+      const result = await exportToExcel([], matchData, {
+        filename: `Match_Details_${new Date().toISOString().split('T')[0]}.xlsx`,
+        includeCharacterAverages: false,
+        includeMatchDetails: true,
+        includeFormatting: true
+      });
+      
+      if (result.success) {
+        console.log('Match Details export successful:', result.filename);
+      } else {
+        console.error('Export failed:', result.error);
+        alert(`Export failed: ${result.error}`);
+      }
+    } catch (error) {
+      console.error('Export error:', error);
+      alert(`Export failed: ${error.message}`);
+    }
+  };
+
   // Helper function to recursively search for BattleResults, TeamBattleResults, or battleWinLose in nested JSON
   const findBattleData = (obj, maxDepth = 5, currentDepth = 0) => {
     if (!obj || typeof obj !== 'object' || currentDepth >= maxDepth) {
@@ -1838,6 +2184,13 @@ export default function App() {
       const teamBattleResults = obj.TeamBattleResults;
       if (teamBattleResults.battleResult) {
         return teamBattleResults.battleResult;
+      }
+      if (teamBattleResults.BattleResults) {
+        return teamBattleResults.BattleResults;
+      }
+      // Check if data is directly in TeamBattleResults
+      if (teamBattleResults.battleWinLose && teamBattleResults.characterRecord) {
+        return teamBattleResults;
       }
     }
 
@@ -1870,9 +2223,17 @@ export default function App() {
     // Handle TeamBattleResults format (current BR_Data structure)
     if (fileContent.TeamBattleResults && typeof fileContent.TeamBattleResults === 'object') {
       const teamBattleResults = fileContent.TeamBattleResults;
+      // Check for both battleResult (lowercase) and BattleResults (capital)
       if (teamBattleResults.battleResult) {
         battleWinLose = teamBattleResults.battleResult.battleWinLose;
         characterRecord = teamBattleResults.battleResult.characterRecord;
+      } else if (teamBattleResults.BattleResults) {
+        battleWinLose = teamBattleResults.BattleResults.battleWinLose;
+        characterRecord = teamBattleResults.BattleResults.characterRecord;
+      } else if (teamBattleResults.battleWinLose && teamBattleResults.characterRecord) {
+        // Direct properties in TeamBattleResults (new wrapper format)
+        battleWinLose = teamBattleResults.battleWinLose;
+        characterRecord = teamBattleResults.characterRecord;
       }
     }
     // Handle new format with teams array at the top
@@ -2201,20 +2562,112 @@ export default function App() {
                 <label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
                   Select a test data file to analyze:
                 </label>
-                <select
-                  value={selectedFile || ''}
-                  onChange={e => handleSelect(e.target.value)}
-                  className={`w-full p-3 border rounded-lg focus:ring-2 focus:ring-blue-500 ${
-                    darkMode 
-                      ? 'bg-gray-800 border-gray-600 text-white focus:border-blue-400' 
-                      : 'bg-white border-gray-300 text-gray-900 focus:border-blue-500'
-                  }`}
-                >
-                  <option value="" disabled>Choose a battle result file...</option>
-                  {fileNames.map((file) => (
-                    <option key={file} value={file}>{file}</option>
-                  ))}
-                </select>
+                <div className="relative">
+                  <div className="relative">
+                    <Search className={`absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 pointer-events-none ${darkMode ? 'text-gray-400' : 'text-gray-500'}`} />
+                    <input
+                      type="text"
+                      role="combobox"
+                      aria-expanded={comboboxOpen}
+                      aria-controls="file-listbox"
+                      aria-autocomplete="list"
+                      value={comboboxInput}
+                      onChange={(e) => {
+                        setComboboxInput(e.target.value);
+                        setComboboxOpen(true);
+                        setComboboxHighlightedIndex(-1);
+                      }}
+                      onFocus={() => setComboboxOpen(true)}
+                      onBlur={() => setTimeout(() => setComboboxOpen(false), 150)}
+                      onKeyDown={(e) => {
+                        const filtered = fileNames.filter(f => f.toLowerCase().includes(comboboxInput.toLowerCase()));
+                        if (filtered.length === 0) return; // No results to navigate
+                        
+                        if (e.key === 'ArrowDown') {
+                          e.preventDefault();
+                          setComboboxHighlightedIndex(i => {
+                            const next = i + 1;
+                            return next >= filtered.length ? 0 : next; // Wrap to top
+                          });
+                          setComboboxOpen(true);
+                        } else if (e.key === 'ArrowUp') {
+                          e.preventDefault();
+                          setComboboxHighlightedIndex(i => {
+                            const prev = i - 1;
+                            return prev < 0 ? filtered.length - 1 : prev; // Wrap to bottom
+                          });
+                          setComboboxOpen(true);
+                        } else if (e.key === 'Enter') {
+                          e.preventDefault();
+                          const choice = comboboxHighlightedIndex >= 0 ? filtered[comboboxHighlightedIndex] : filtered[0];
+                          if (choice) {
+                            setComboboxInput(choice);
+                            handleSelect(choice);
+                            setComboboxOpen(false);
+                            setComboboxHighlightedIndex(-1);
+                          }
+                        } else if (e.key === 'Escape') {
+                          e.preventDefault();
+                          setComboboxOpen(false);
+                          setComboboxHighlightedIndex(-1);
+                        }
+                      }}
+                      placeholder="Search or choose a battle result file..."
+                      className={`w-full pl-10 pr-10 py-3 border rounded-lg focus:ring-2 focus:ring-blue-500 ${
+                        darkMode 
+                          ? 'bg-gray-800 border-gray-600 text-white focus:border-blue-400 placeholder-gray-500' 
+                          : 'bg-white border-gray-300 text-gray-900 focus:border-blue-500 placeholder-gray-400'
+                      }`}
+                    />
+                    {comboboxInput && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setComboboxInput('');
+                          setComboboxHighlightedIndex(-1);
+                          setSelectedFile(null);
+                          setFileContent(null);
+                        }}
+                        className={`absolute right-3 top-1/2 -translate-y-1/2 p-1 rounded hover:bg-opacity-10 ${darkMode ? 'text-gray-200 bg-gray-800 hover:text-gray-300 hover:bg-gray-700' : 'text-gray-500 hover:text-gray-700 hover:bg-black'}`}
+                      >
+                        <X className="w-4 h-4" />
+                      </button>
+                    )}
+                  </div>
+
+                  {comboboxOpen && (() => {
+                    const filtered = fileNames.filter(f => f.toLowerCase().includes(comboboxInput.toLowerCase()));
+                    return (
+                      <ul
+                        id="file-listbox"
+                        role="listbox"
+                        style={{ listStyleType: 'none', padding: 0, margin: 0 }}
+                        className={`absolute z-20 mt-1 w-full max-h-48 overflow-auto rounded-lg border shadow-lg text-sm ${darkMode ? 'bg-gray-800 border-gray-600 text-gray-100' : 'bg-white border-gray-200'}`}
+                      >
+                        {filtered.length === 0 ? (
+                          <li className={`px-3 py-2 text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                            No files found
+                          </li>
+                        ) : (
+                          filtered.map((file, idx) => (
+                            <li
+                              key={file}
+                              role="option"
+                              aria-selected={selectedFile === file}
+                              onMouseDown={(ev) => { ev.preventDefault(); setComboboxInput(file); handleSelect(file); setComboboxOpen(false); }}
+                              onMouseEnter={() => setComboboxHighlightedIndex(idx)}
+                              className={`px-3 py-2 cursor-pointer truncate transition-colors ${
+                                comboboxHighlightedIndex === idx ? (darkMode ? 'bg-gray-700' : 'bg-gray-100') : ''
+                              } ${selectedFile === file ? (darkMode ? 'text-blue-400 font-semibold' : 'text-blue-600 font-semibold') : ''}`}
+                            >
+                              {file}
+                            </li>
+                          ))
+                        )}
+                      </ul>
+                    );
+                  })()}
+                </div>
               </div>
             )}
           </div>
@@ -2507,13 +2960,6 @@ export default function App() {
                 {/* Search Bar */}
                 {/* Character Filter */}
                 <div className="mb-4">
-                  <div className={`text-sm font-medium mb-2 flex items-center gap-2 ${
-                    darkMode ? 'text-gray-300' : 'text-gray-700'
-                  }`}>
-                    <Search className="w-4 h-4" />
-                    Characters
-                  </div>
-                  
                   {/* Selected Characters as Chips */}
                   {selectedCharacters.length > 0 && (
                     <div className="flex flex-wrap gap-2 mb-2">
@@ -2548,9 +2994,14 @@ export default function App() {
                   
                   {/* Search Input with Dropdown */}
                   <div className="relative">
-                    <Search className={`absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 ${
-                      darkMode ? 'text-gray-400' : 'text-gray-500'
-                    }`} />
+                    <div className={`text-sm font-medium mb-2 flex items-center gap-2 ${
+                    darkMode ? 'text-gray-300' : 'text-gray-700'
+                    }`}>
+                      <Search className={`absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 ${
+                        darkMode ? 'text-gray-400' : 'text-gray-500'
+                      }`} />
+                      Characters
+                    </div>
                     <input
                       type="text"
                       placeholder="Search and select characters..."
@@ -2728,35 +3179,111 @@ export default function App() {
                 {/* Team Filter */}
                 {availableTeams.length > 0 && (
                   <div className="mb-4">
-                    <div className={`text-sm font-medium mb-2 flex items-center gap-2 ${
-                      darkMode ? 'text-gray-300' : 'text-gray-700'
-                    }`}>
-                      <Users className="w-4 h-4" />
-                      Teams
-                    </div>
-                    <div className="flex flex-wrap gap-2">
-                      {availableTeams.map(team => {
-                        const isActive = selectedTeams.includes(team);
-                        return (
+                    {/* Selected Teams as Chips */}
+                    {selectedTeams.length > 0 && (
+                      <div className="flex flex-wrap gap-2 mb-2">
+                        {selectedTeams.map(team => (
                           <button
                             key={team}
                             onClick={() => {
-                              setSelectedTeams(prev => 
-                                isActive 
-                                  ? prev.filter(t => t !== team)
-                                  : [...prev, team]
-                              );
+                              setSelectedTeams(prev => prev.filter(t => t !== team));
                             }}
-                            className={`px-3 py-1.5 rounded-lg border text-sm font-medium transition-all ${
-                              isActive
-                                ? (darkMode ? 'bg-blue-900 border-blue-600 text-blue-300' : 'bg-blue-100 border-blue-500 text-blue-700')
-                                : (darkMode ? 'bg-gray-800 border-gray-600 text-gray-400 hover:border-gray-500' : 'bg-gray-100 border-gray-300 text-gray-500 hover:border-gray-400')
+                            className={`px-3 py-1.5 rounded-lg border text-sm font-medium transition-all flex items-center gap-1 ${
+                              darkMode 
+                                ? 'bg-blue-900 border-blue-600 text-blue-300 hover:bg-blue-800' 
+                                : 'bg-blue-100 border-blue-500 text-blue-700 hover:bg-blue-200'
                             }`}
                           >
                             {team}
+                            <X className="w-3 h-3" />
                           </button>
-                        );
-                      })}
+                        ))}
+                        <button
+                          onClick={() => setSelectedTeams([])}
+                          className={`px-2 py-1.5 rounded-lg text-xs font-medium transition-all ${
+                            darkMode 
+                              ? 'text-gray-400 bg-gray-800 hover:text-gray-300 hover:bg-gray-700' 
+                              : 'text-gray-500 hover:text-gray-700 hover:bg-gray-100'
+                          }`}
+                        >
+                          Clear all
+                        </button>
+                      </div>
+                    )}
+                    
+                    {/* Search Input with Dropdown */}
+                    <div className="relative">
+                      <div className={`text-sm font-medium mb-2 flex items-center gap-2 ${
+                      darkMode ? 'text-gray-300' : 'text-gray-700'
+                      }`}>
+                        <Users className={`absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 ${
+                          darkMode ? 'text-gray-400' : 'text-gray-500'
+                        }`} />
+                        Teams
+                      </div>
+                      <input
+                        type="text"
+                        placeholder="Search and select teams..."
+                        value={teamSearchInput}
+                        onChange={(e) => setTeamSearchInput(e.target.value)}
+                        className={`w-full pl-10 pr-10 py-2 rounded-lg border ${
+                          darkMode 
+                            ? 'bg-gray-800 border-gray-600 text-white placeholder-gray-400 focus:border-blue-500' 
+                            : 'bg-white border-gray-300 text-gray-900 placeholder-gray-500 focus:border-blue-500'
+                        } focus:outline-none focus:ring-2 focus:ring-blue-500/50`}
+                      />
+                      {teamSearchInput && (
+                        <button
+                          onClick={() => setTeamSearchInput('')}
+                          className={`absolute right-3 top-1/2 transform -translate-y-1/2 ${
+                            darkMode ? 'text-gray-400 bg-gray-700 hover:text-gray-300' : 'text-gray-500 hover:text-gray-700'
+                          }`}
+                        >
+                          <X className="w-5 h-5" />
+                        </button>
+                      )}
+                      
+                      {/* Dropdown with filtered teams */}
+                      {teamSearchInput && (
+                        <div className={`absolute z-10 w-full mt-1 rounded-lg border shadow-lg max-h-60 overflow-y-auto ${
+                          darkMode 
+                            ? 'bg-gray-800 border-gray-600' 
+                            : 'bg-white border-gray-300'
+                        }`}>
+                          {availableTeams
+                            .filter(team => 
+                              team.toLowerCase().includes(teamSearchInput.toLowerCase()) &&
+                              !selectedTeams.includes(team)
+                            )
+                            .map(team => (
+                              <button
+                                key={team}
+                                onClick={() => {
+                                  setSelectedTeams(prev => [...prev, team]);
+                                  setTeamSearchInput('');
+                                }}
+                                className={`w-full text-left px-4 py-2 text-sm transition-colors ${
+                                  darkMode 
+                                    ? 'text-gray-100 bg-gray-600 hover:bg-gray-700 hover:text-white' 
+                                    : 'text-gray-700 hover:bg-gray-100'
+                                }`}
+                              >
+                                {team}
+                              </button>
+                            ))
+                          }
+                          {availableTeams.filter(team => 
+                            team.toLowerCase().includes(teamSearchInput.toLowerCase()) &&
+                            !selectedTeams.includes(team)
+                          ).length === 0 && (
+                            <div className={`px-4 py-2 text-sm ${
+                              darkMode ? 'text-gray-400' : 'text-gray-500'
+                            }`}>
+                              No teams found
+                            </div>
+                          )}
+                        </div>
+                      )}
                     </div>
                   </div>
                 )}
@@ -2764,36 +3291,119 @@ export default function App() {
                 {/* AI Strategy Filter */}
                 {availableAIStrategies.length > 0 && (
                   <div className="mb-4">
-                    <div className={`text-sm font-medium mb-2 flex items-center gap-2 ${
+                    {/* Selected AI Strategies as Chips */}
+                    {selectedAIStrategies.length > 0 && (
+                      <div className="flex flex-wrap gap-2 mb-2">
+                        {selectedAIStrategies.map(ai => {
+                          const displayName = ai === 'Com' ? 'Computer' : ai === 'Player' ? 'Player' : ai;
+                          return (
+                            <button
+                              key={ai}
+                              onClick={() => {
+                                setSelectedAIStrategies(prev => prev.filter(a => a !== ai));
+                              }}
+                              className={`px-3 py-1.5 rounded-lg border text-sm font-medium transition-all flex items-center gap-1 ${
+                                darkMode 
+                                  ? 'bg-purple-900 border-purple-600 text-purple-300 hover:bg-purple-800' 
+                                  : 'bg-purple-100 border-purple-500 text-purple-700 hover:bg-purple-200'
+                              }`}
+                            >
+                              {displayName}
+                              <X className="w-3 h-3" />
+                            </button>
+                          );
+                        })}
+                        <button
+                          onClick={() => setSelectedAIStrategies([])}
+                          className={`px-2 py-1.5 rounded-lg text-xs font-medium transition-all ${
+                            darkMode 
+                              ? 'text-gray-400 bg-gray-800 hover:text-gray-300 hover:bg-gray-700' 
+                              : 'text-gray-500 hover:text-gray-700 hover:bg-gray-100'
+                          }`}
+                        >
+                          Clear all
+                        </button>
+                      </div>
+                    )}
+                    
+                    {/* Search Input with Dropdown */}
+                    <div className="relative">
+                      <div className={`text-sm font-medium mb-2 flex items-center gap-2 ${
                       darkMode ? 'text-gray-300' : 'text-gray-700'
-                    }`}>
-                      <Settings className="w-4 h-4" />
-                      AI Strategy
-                    </div>
-                    <div className="flex flex-wrap gap-2">
-                      {availableAIStrategies.map(ai => {
-                        const isActive = selectedAIStrategies.includes(ai);
-                        const displayName = ai === 'Com' ? 'Computer' : ai === 'Player' ? 'Player' : ai;
-                        return (
-                          <button
-                            key={ai}
-                            onClick={() => {
-                              setSelectedAIStrategies(prev => 
-                                isActive 
-                                  ? prev.filter(a => a !== ai)
-                                  : [...prev, ai]
+                      }`}>
+                        <Settings className={`absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 ${
+                          darkMode ? 'text-gray-400' : 'text-gray-500'
+                        }`} />
+                        AI Strategies
+                      </div>
+                      <input
+                        type="text"
+                        placeholder="Search and select AI strategies..."
+                        value={aiStrategySearchInput}
+                        onChange={(e) => setAIStrategySearchInput(e.target.value)}
+                        className={`w-full pl-10 pr-10 py-2 rounded-lg border ${
+                          darkMode 
+                            ? 'bg-gray-800 border-gray-600 text-white placeholder-gray-400 focus:border-purple-500' 
+                            : 'bg-white border-gray-300 text-gray-900 placeholder-gray-500 focus:border-purple-500'
+                        } focus:outline-none focus:ring-2 focus:ring-purple-500/50`}
+                      />
+                      {aiStrategySearchInput && (
+                        <button
+                          onClick={() => setAIStrategySearchInput('')}
+                          className={`absolute right-3 top-1/2 transform -translate-y-1/2 ${
+                            darkMode ? 'text-gray-400 bg-gray-700 hover:text-gray-300' : 'text-gray-500 hover:text-gray-700'
+                          }`}
+                        >
+                          <X className="w-5 h-5" />
+                        </button>
+                      )}
+                      
+                      {/* Dropdown with filtered AI strategies */}
+                      {aiStrategySearchInput && (
+                        <div className={`absolute z-10 w-full mt-1 rounded-lg border shadow-lg max-h-60 overflow-y-auto ${
+                          darkMode 
+                            ? 'bg-gray-800 border-gray-600' 
+                            : 'bg-white border-gray-300'
+                        }`}>
+                          {availableAIStrategies
+                            .filter(ai => {
+                              const displayName = ai === 'Com' ? 'Computer' : ai === 'Player' ? 'Player' : ai;
+                              return displayName.toLowerCase().includes(aiStrategySearchInput.toLowerCase()) &&
+                                !selectedAIStrategies.includes(ai);
+                            })
+                            .map(ai => {
+                              const displayName = ai === 'Com' ? 'Computer' : ai === 'Player' ? 'Player' : ai;
+                              return (
+                                <button
+                                  key={ai}
+                                  onClick={() => {
+                                    setSelectedAIStrategies(prev => [...prev, ai]);
+                                    setAIStrategySearchInput('');
+                                  }}
+                                  className={`w-full text-left px-4 py-2 text-sm transition-colors ${
+                                    darkMode 
+                                      ? 'text-gray-100 bg-gray-600 hover:bg-gray-700 hover:text-white' 
+                                      : 'text-gray-700 hover:bg-gray-100'
+                                  }`}
+                                >
+                                  {displayName}
+                                </button>
                               );
-                            }}
-                            className={`px-3 py-1.5 rounded-lg border text-sm font-medium transition-all ${
-                              isActive
-                                ? (darkMode ? 'bg-purple-900 border-purple-600 text-purple-300' : 'bg-purple-100 border-purple-500 text-purple-700')
-                                : (darkMode ? 'bg-gray-800 border-gray-600 text-gray-400 hover:border-gray-500' : 'bg-gray-100 border-gray-300 text-gray-500 hover:border-gray-400')
-                            }`}
-                          >
-                            {displayName}
-                          </button>
-                        );
-                      })}
+                            })
+                          }
+                          {availableAIStrategies.filter(ai => {
+                            const displayName = ai === 'Com' ? 'Computer' : ai === 'Player' ? 'Player' : ai;
+                            return displayName.toLowerCase().includes(aiStrategySearchInput.toLowerCase()) &&
+                              !selectedAIStrategies.includes(ai);
+                          }).length === 0 && (
+                            <div className={`px-4 py-2 text-sm ${
+                              darkMode ? 'text-gray-400' : 'text-gray-500'
+                            }`}>
+                              No AI strategies found
+                            </div>
+                          )}
+                        </div>
+                      )}
                     </div>
                   </div>
                 )}
@@ -2957,159 +3567,232 @@ export default function App() {
                     
                     {expanded && (
                       <div className={`mt-6 pt-6 border-t ${darkMode ? 'border-gray-600' : 'border-gray-200'}`}>
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                          <div className="grid grid-cols-1 sm:grid-cols-2">
-                            {/* Overall Performance Score */}
-                            <div className={`rounded-lg p-4 mb-3 ${darkMode ? 'bg-gray-700' : 'bg-white'}`}>
-                              <div className="flex items-center gap-2 mb-3">
-                                <Star className={`w-5 h-5 ${darkMode ? 'text-yellow-400' : 'text-yellow-600'}`} />
-                                <h4 className={`font-bold ${darkMode ? 'text-white' : 'text-gray-800'}`}>Overall Performance Score</h4>
-                                <div className="relative group">
-                                  {/* Tooltip temporarily hidden */}
+                        <div className="grid grid-cols-1 gap-4">
+                          {/* Overall Performance Score */}
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                            <div className="grid grid-cols-1 sm:grid-cols-1 gap-4">
+                              <div className={`rounded-lg p-3 ${darkMode ? 'bg-gray-700' : 'bg-white'}`}>
+                                <div className="flex items-center gap-2 mb-2">
+                                  <Star className={`w-5 h-5 ${darkMode ? 'text-yellow-400' : 'text-yellow-600'}`} />
+                                  <h4 className={`text-sm font-bold ${darkMode ? 'text-white' : 'text-gray-800'}`}>Overall Performance Score</h4>
+                                </div>
+                                <div className="text-center">
+                                  {(() => {
+                                    const level = getPerformanceLevel(char.combatPerformanceScore, combatPerformanceScores);
+                                    let colorClass;
+                                    switch (level) {
+                                      case 'excellent':
+                                        colorClass = 'text-green-600';
+                                        break;
+                                      case 'good':
+                                        colorClass = 'text-blue-500';
+                                        break;
+                                      case 'average':
+                                        colorClass = 'text-yellow-500';
+                                        break;
+                                      case 'below-average':
+                                        colorClass = 'text-orange-600';
+                                        break;
+                                      default:
+                                        colorClass = 'text-red-600';
+                                    }
+                                    return (
+                                      <div className={`text-4xl font-bold mb-2 ${colorClass}`}>
+                                        {Math.round(char.combatPerformanceScore)}
+                                      </div>
+                                    );
+                                  })()}
+                                  <div className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
+                                    Based on {char.matchCount} match{char.matchCount !== 1 ? 'es' : ''}
+                                  </div>
+                                  <div className="grid grid-cols-2 gap-2 mt-2">
+                                    {char.primaryTeam && (
+                                      <div className={`text-left text-xs ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
+                                        <span className={`font-semibold ${darkMode ? 'text-blue-400' : 'text-blue-600'}`}>Team:</span> {char.primaryTeam}
+                                      </div>
+                                    )}
+                                    {char.primaryAIStrategy && (
+                                      <div className={`text-right text-xs ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
+                                        <span className={`font-semibold ${darkMode ? 'text-purple-400' : 'text-purple-600'}`}>AI:</span> {char.primaryAIStrategy}
+                                      </div>
+                                    )}
+                                  </div>
                                 </div>
                               </div>
-                              <div className="text-center">
-                                {(() => {
-                                  const level = getPerformanceLevel(char.combatPerformanceScore, combatPerformanceScores);
-                                  let colorClass;
-                                  switch (level) {
-                                    case 'excellent':
-                                      colorClass = 'text-green-600';
-                                      break;
-                                    case 'good':
-                                      colorClass = 'text-blue-500';
-                                      break;
-                                    case 'average':
-                                      colorClass = 'text-yellow-500';
-                                      break;
-                                    case 'below-average':
-                                      colorClass = 'text-orange-600';
-                                      break;
-                                    default:
-                                      colorClass = 'text-red-600';
-                                  }
-                                  return (
-                                    <div className={`text-4xl font-bold mb-2 ${colorClass}`}>
-                                      {Math.round(char.combatPerformanceScore)}
-                                    </div>
-                                  );
-                                })()}
-                                <div className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
-                                  Based on {char.matchCount} match{char.matchCount !== 1 ? 'es' : ''}
+                              {/* Combat Performance - Full Width */}
+                              <div className={`rounded-lg p-3 ${darkMode ? 'bg-gray-700' : 'bg-white'}`}>
+                                <div className="flex items-center gap-2 mb-2">
+                                  <Swords className={`w-5 h-5 ${darkMode ? 'text-red-400' : 'text-red-600'}`} />
+                                  <h4 className={`text-sm font-bold ${darkMode ? 'text-white' : 'text-gray-800'}`}>Combat Performance</h4>
                                 </div>
-                                <div className="grid grid-cols-2 sm:grid-cols-1">
-                                  {char.primaryTeam && (
-                                    <div className={`text-left text-xs mt-2 ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
-                                      <span className={`font-semibold ${darkMode ? 'text-blue-400' : 'text-blue-600'}`}>Team:</span> {char.primaryTeam}
+                                <div className="space-y-2 text-sm mb-3">
+                                  <div className="flex justify-between">
+                                    <span className={`${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>Damage Done:</span>
+                                    <div className="flex items-center gap-2">
+                                      <strong className={`${darkMode ? 'text-white' : 'text-gray-900'}`}>{char.avgDamage.toLocaleString()}</strong>
+                                      <PerformanceIndicator value={char.avgDamage} allValues={allAvgDamageValues} darkMode={darkMode} />
                                     </div>
-                                  )}
-                                  {char.primaryAIStrategy && (
-                                    <div className={`text-right text-xs mt-1 ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
-                                      <span className={`font-semibold ${darkMode ? 'text-purple-400' : 'text-purple-600'}`}>AI:</span> {char.primaryAIStrategy}
+                                  </div>
+                                  <div className="flex justify-between">
+                                    <span className={`${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>Damage Taken:</span>
+                                    <div className="flex items-center gap-2">
+                                      <strong className={`${darkMode ? 'text-white' : 'text-gray-900'}`}>{char.avgTaken.toLocaleString()}</strong>
+                                      <PerformanceIndicator value={char.avgTaken} allValues={allAvgTakenValues} isInverse={true} darkMode={darkMode} />
                                     </div>
-                                  )}
+                                  </div>
+                                  <div className="flex justify-between">
+                                    <span className={`${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>Damage Over Time:</span>
+                                    <div className="flex items-center gap-2">
+                                      <strong className={`${darkMode ? 'text-white' : 'text-gray-900'}`}>{Math.round(char.avgDamage / char.avgBattleTime).toLocaleString()}/sec</strong>
+                                      <PerformanceIndicator value={char.avgDamage / char.avgBattleTime} allValues={filteredAggregatedData.map(c => c.avgDamage / c.avgBattleTime)} darkMode={darkMode} />
+                                    </div>
+                                  </div>
+                                  <div className="flex justify-between">
+                                    <span className={`${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>Damage Efficiency:</span>
+                                    <div className="flex items-center gap-2">
+                                      <strong className={`${darkMode ? 'text-white' : 'text-gray-900'}`}>{(char.avgDamage / Math.max(char.avgTaken, 1)).toFixed(2)}x</strong>
+                                      <PerformanceIndicator value={char.avgDamage / Math.max(char.avgTaken, 1)} allValues={filteredAggregatedData.map(c => c.avgDamage / Math.max(c.avgTaken, 1))} darkMode={darkMode} />
+                                    </div>
+                                  </div>
+                                </div>
+                                <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-xs pt-2 border-t border-gray-600">
+                                  <div className="flex justify-between">
+                                    <span className={`${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>Throws:</span>
+                                    <strong className={`${darkMode ? 'text-white' : 'text-gray-900'}`}>{char.avgThrows}</strong>
+                                  </div>
+                                  <div className="flex justify-between">
+                                    <span className={`${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>Vanishing Attacks:</span>
+                                    <strong className={`${darkMode ? 'text-white' : 'text-gray-900'}`}>{char.avgVanishingAttacks}</strong>
+                                  </div>
+                                  <div className="flex justify-between">
+                                    <span className={`${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>Dragon Homings:</span>
+                                    <strong className={`${darkMode ? 'text-white' : 'text-gray-900'}`}>{char.avgDragonHoming}</strong>
+                                  </div>
+                                  <div className="flex justify-between">
+                                    <span className={`${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>Lightning Attacks:</span>
+                                    <strong className={`${darkMode ? 'text-white' : 'text-gray-900'}`}>{char.avgLightningAttacks}</strong>
+                                  </div>
+                                  <div className="flex justify-between">
+                                    <span className={`${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>Speed Impacts:</span>
+                                    <strong className={`${darkMode ? 'text-white' : 'text-gray-900'}`}>{char.avgSpeedImpacts}</strong>
+                                  </div>
+                                  <div className="flex justify-between">
+                                    <span className={`${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>Speed Impact Wins:</span>
+                                    <strong className={`${darkMode ? 'text-white' : 'text-gray-900'}`}>{char.avgSpeedImpactWins}</strong>
+                                  </div>
+                                  <div className="flex justify-between">
+                                    <span className={`${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>Max Combo Hits:</span>
+                                    <strong className={`${darkMode ? 'text-white' : 'text-gray-900'}`}>{char.avgMaxCombo}</strong>
+                                  </div>
+                                  <div className="flex justify-between">
+                                    <span className={`${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>Max Combo Damage:</span>
+                                    <strong className={`${darkMode ? 'text-white' : 'text-gray-900'}`}>{char.avgMaxComboDamage.toLocaleString()}</strong>
+                                  </div>
+                                  <div className="flex justify-between">
+                                    <span className={`${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>Sparking Combo Hits:</span>
+                                    <strong className={`${darkMode ? 'text-white' : 'text-gray-900'}`}>{char.avgSparkingCombo}</strong>
+                                  </div>
+                                  <div className="flex justify-between">
+                                    <span className={`${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>Avg Kills:</span>
+                                    <strong className={`${darkMode ? 'text-white' : 'text-gray-900'}`}>{char.avgKills}</strong>
+                                  </div>
                                 </div>
                               </div>
                             </div>
-                            {/* Combat Performance */}
-                            <div className={`rounded-lg p-4 ${darkMode ? 'bg-gray-700' : 'bg-white'}`}>
-                              <div className="flex items-center gap-2 mb-3">
-                                <Swords className={`w-5 h-5 ${darkMode ? 'text-red-400' : 'text-red-600'}`} />
-                                <h4 className={`font-bold ${darkMode ? 'text-white' : 'text-gray-800'}`}>Combat Performance</h4>
-                              </div>
-                              <div className="space-y-3 text-sm">
-                                <div className="flex justify-between">
-                                  <span className={`${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>Avg Damage per Match:</span>
-                                  <div className="flex items-center gap-2">
-                                    <strong className={`${darkMode ? 'text-white' : 'text-gray-900'}`}>{char.avgDamage.toLocaleString()}</strong>
-                                    <PerformanceIndicator value={char.avgDamage} allValues={allAvgDamageValues} darkMode={darkMode} />
+                            {/* Survival & Health and Special Abilities in a nested grid */}
+                            <div className="grid grid-cols-1 sm:grid-cols-1 gap-4">
+                              {/* Survival & Health */}
+                              <div className={`rounded-lg p-3 ${darkMode ? 'bg-gray-700' : 'bg-white'}`}>
+                                <div className="flex items-center gap-2 mb-2">
+                                  <Heart className={`w-5 h-5 ${darkMode ? 'text-green-400' : 'text-green-600'}`} />
+                                  <h4 className={`text-sm font-bold ${darkMode ? 'text-white' : 'text-gray-800'}`}>Survival & Health</h4>
+                                </div>
+                                <div className="space-y-2 text-sm mb-2">
+                                  <div className="flex justify-between">
+                                    <span className={`${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>Max Health:</span>
+                                    <strong className={`${darkMode ? 'text-white' : 'text-gray-900'}`}>{char.avgHPGaugeValueMax.toLocaleString()}</strong>
+                                  </div>
+                                  <div className="flex justify-between">
+                                    <span className={`${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>Health Remaining:</span>
+                                    <strong className={`${darkMode ? 'text-white' : 'text-gray-900'}`}>{char.avgHealth.toLocaleString()}</strong>
+                                  </div>
+                                  <div className="flex justify-between">
+                                    <span className={`${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>Survival Rate:</span>
+                                    <strong className={`${darkMode ? 'text-white' : 'text-gray-900'}`}>{char.survivalRate.toFixed(1)}%</strong>
                                   </div>
                                 </div>
-                                <div className="flex justify-between">
-                                  <span className={`${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>Avg Damage Taken:</span>
-                                  <div className="flex items-center gap-2">
-                                    <strong className={`${darkMode ? 'text-white' : 'text-gray-900'}`}>{char.avgTaken.toLocaleString()}</strong>
-                                    <PerformanceIndicator value={char.avgTaken} allValues={allAvgTakenValues} isInverse={true} darkMode={darkMode} />
+                                <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 text-xs pt-2 border-t border-gray-600">
+                                  <div className="flex justify-between">
+                                    <span className={`${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>Guards:</span>
+                                    <strong className={`${darkMode ? 'text-white' : 'text-gray-900'}`}>{char.avgGuards}</strong>
                                   </div>
-                                </div>
-                                <div className="flex justify-between">
-                                  <span className={`${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>Damage Over Time:</span>
-                                  <div className="flex items-center gap-2">
-                                    <strong className={`${darkMode ? 'text-white' : 'text-gray-900'}`}>{Math.round(char.avgDamage / char.avgBattleTime).toLocaleString()}/sec</strong>
-                                    <PerformanceIndicator value={char.avgDamage / char.avgBattleTime} allValues={filteredAggregatedData.map(c => c.avgDamage / c.avgBattleTime)} darkMode={darkMode} />
+                                  <div className="flex justify-between">
+                                    <span className={`${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>Super Counters:</span>
+                                    <strong className={`${darkMode ? 'text-white' : 'text-gray-900'}`}>{char.avgSuperCounters}</strong>
                                   </div>
-                                </div>
-                                <div className="flex justify-between">
-                                  <span className={`${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>Damage Efficiency:</span>
-                                  <div className="flex items-center gap-2">
-                                    <strong className={`${darkMode ? 'text-white' : 'text-gray-900'}`}>{(char.avgDamage / Math.max(char.avgTaken, 1)).toFixed(2)}x</strong>
-                                    <PerformanceIndicator value={char.avgDamage / Math.max(char.avgTaken, 1)} allValues={filteredAggregatedData.map(c => c.avgDamage / Math.max(c.avgTaken, 1))} darkMode={darkMode} />
+                                  <div className="flex justify-between">
+                                    <span className={`${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>Revenge Counters:</span>
+                                    <strong className={`${darkMode ? 'text-white' : 'text-gray-900'}`}>{char.avgRevengeCounters}</strong>
+                                  </div>
+                                  <div className="flex justify-between">
+                                    <span className={`${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>Z-Counters:</span>
+                                    <strong className={`${darkMode ? 'text-white' : 'text-gray-900'}`}>{char.avgZCounters}</strong>
                                   </div>
                                 </div>
                               </div>
-                            </div>
-                          </div>  
-                          {/* Survival & Health and Special Abilities in a nested grid */}
-                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
-                            {/* Survival & Health */}
-                            <div className={`rounded-lg p-4 ${darkMode ? 'bg-gray-800' : 'bg-white'}`}>
-                              <div className="flex items-center gap-2 mb-3">
-                                <Heart className={`w-5 h-5 ${darkMode ? 'text-green-400' : 'text-green-600'}`} />
-                                <h4 className={`font-bold ${darkMode ? 'text-white' : 'text-gray-800'}`}>Survival & Health</h4>
-                              </div>
-                              <div className="space-y-3 text-sm">
-                                <div className="flex justify-between">
-                                  <span className={`${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>Avg HP Remaining:</span>
-                                  <strong className={`${darkMode ? 'text-white' : 'text-gray-900'}`}>{char.avgHealth.toLocaleString()}</strong>
-                                </div>
-                                <div className="flex justify-between">
-                                  <span className={`${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>Survival Rate:</span>
-                                  <strong className={`${darkMode ? 'text-white' : 'text-gray-900'}`}>{((char.avgHealth / 40000) * 100).toFixed(1)}%</strong>
-                                </div>
-                                <div className="flex justify-between">
-                                  <span className={`${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>Total Eliminations:</span>
-                                  <strong className={`flex items-center gap-1 ${darkMode ? 'text-white' : 'text-gray-900'}`}>
-                                    <Trophy className={`w-4 h-4 ${darkMode ? 'text-yellow-400' : 'text-yellow-500'}`} />
-                                    {char.totalKills}
-                                  </strong>
-                                </div>
-                                <div className="flex justify-between">
-                                  <span className={`${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>Avg Kills per Match:</span>
-                                  <strong className={`${darkMode ? 'text-white' : 'text-gray-900'}`}>{char.avgKills}</strong>
-                                </div>
-                              </div>
-                            </div>
 
-                            {/* Special Abilities */}
-                            <div className={`rounded-lg p-4 ${darkMode ? 'bg-gray-800' : 'bg-white'}`}>
-                              <div className="flex items-center gap-2 mb-3">
-                                <Zap className={`w-5 h-5 ${darkMode ? 'text-purple-400' : 'text-purple-600'}`} />
-                                <h4 className={`font-bold ${darkMode ? 'text-white' : 'text-gray-800'}`}>Special Abilities</h4>
-                              </div>
-                              <div className="space-y-3 text-sm">
-                                <div className="flex justify-between">
-                                  <span className={`${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>Total Blast Skills:</span>
-                                  <strong className={`${darkMode ? 'text-white' : 'text-gray-900'}`}>{char.totalSpecial}</strong>
+                              {/* Special Abilities */}
+                              <div className={`rounded-lg p-3 ${darkMode ? 'bg-gray-700' : 'bg-white'}`}>
+                                <div className="flex items-center gap-2 mb-2">
+                                  <Zap className={`w-5 h-5 ${darkMode ? 'text-purple-400' : 'text-purple-600'}`} />
+                                  <h4 className={`text-sm font-bold ${darkMode ? 'text-white' : 'text-gray-800'}`}>Special Abilities</h4>
                                 </div>
-                                <div className="flex justify-between">
-                                  <span className={`${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>Avg Blasts per Match:</span>
-                                  <strong className={`${darkMode ? 'text-white' : 'text-gray-900'}`}>{char.avgSpecial}</strong>
+                                <div className="space-y-2 text-sm mb-2">
+                                  <div className="flex justify-between">
+                                    <span className={`${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>Super 1 Blasts:</span>
+                                    <strong className={`${darkMode ? 'text-white' : 'text-gray-900'}`}>{char.avgSPM1}</strong>
+                                  </div>
+                                  <div className="flex justify-between">
+                                    <span className={`${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>Super 2 Blasts:</span>
+                                    <strong className={`${darkMode ? 'text-white' : 'text-gray-900'}`}>{char.avgSPM2}</strong>
+                                  </div>
+                                  <div className="flex justify-between">
+                                    <span className={`${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>Ultimate Blasts:</span>
+                                    <strong className={`${darkMode ? 'text-white' : 'text-gray-900'}`}>{char.avgUltimates}</strong>
+                                  </div>
                                 </div>
-                                <div className="flex justify-between">
-                                  <span className={`${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>Total Ultimates:</span>
-                                  <strong className={`${darkMode ? 'text-white' : 'text-gray-900'}`}>{char.totalUltimates}</strong>
-                                </div>
-                                <div className="flex justify-between">
-                                  <span className={`${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>Avg Ultimates per Match:</span>
-                                  <strong className={`${darkMode ? 'text-white' : 'text-gray-900'}`}>{char.avgUltimates}</strong>
+                                <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 text-xs pt-2 border-t border-gray-600">
+                                  <div className="flex justify-between">
+                                    <span className={`${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>Skill 1 Usage:</span>
+                                    <strong className={`${darkMode ? 'text-white' : 'text-gray-900'}`}>{char.avgEXA1}</strong>
+                                  </div>
+                                  <div className="flex justify-between">
+                                    <span className={`${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>Skill 2 Usage:</span>
+                                    <strong className={`${darkMode ? 'text-white' : 'text-gray-900'}`}>{char.avgEXA2}</strong>
+                                  </div>
+                                  <div className="flex justify-between">
+                                    <span className={`${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>Charges:</span>
+                                    <strong className={`${darkMode ? 'text-white' : 'text-gray-900'}`}>{char.avgCharges}</strong>
+                                  </div>
+                                  <div className="flex justify-between">
+                                    <span className={`${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>Sparkings:</span>
+                                    <strong className={`${darkMode ? 'text-white' : 'text-gray-900'}`}>{char.avgSparking}</strong>
+                                  </div>
+                                  <div className="flex justify-between">
+                                    <span className={`${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>Ki Blasts:</span>
+                                    <strong className={`${darkMode ? 'text-white' : 'text-gray-900'}`}>{char.avgEnergyBlasts}</strong>
+                                  </div>
+                                  <div className="flex justify-between">
+                                    <span className={`${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>Dragon Dash Mileage:</span>
+                                    <strong className={`${darkMode ? 'text-white' : 'text-gray-900'}`}>{char.avgDragonDashMileage}</strong>
+                                  </div>
                                 </div>
                               </div>
                             </div>
                           </div>
-
                           {/* Forms & Transformations */}
                           {char.hasMultipleForms && (
-                            <div className={`rounded-lg p-3 md:col-span-2 ${
+                            <div className={`rounded-lg p-3 ${
                               darkMode 
                                 ? 'bg-yellow-900/20 border border-yellow-700' 
                                 : 'bg-yellow-50 border border-yellow-200'
@@ -3946,41 +4629,86 @@ export default function App() {
         {((mode === 'reference' && viewType === 'tables') || 
           (mode === 'manual' && viewType === 'tables' && manualFiles.filter(f => !f.error).length > 0)) && (
           <div className="space-y-6">
-            {/* Export Manager */}
-            <div className={`rounded-2xl shadow-xl p-6 ${darkMode ? 'bg-gray-800' : 'bg-white'}`}>
-              <ExportManager
-                aggregatedData={aggregatedData}
-                positionData={positionData}
-                metaData={{ topCapsules: prepareMetaData({ topCapsules: Object.values(aggregatedData).flatMap(char => char.equippedCapsules || []) }) }}
-                viewType={viewType}
-                darkMode={darkMode}
-                selectedFile={selectedFile}
-              />
-            </div>
-
             {/* Character Statistics Table */}
             {aggregatedData && Object.keys(aggregatedData).length > 0 && (
-              <div className={`rounded-2xl shadow-xl p-6 ${darkMode ? 'bg-gray-800' : 'bg-white'}`}>
-                <DataTable
-                  data={prepareCharacterData(aggregatedData)}
-                  columns={getCharacterTableConfig(darkMode).columns}
-                  title="Character Performance Statistics"
-                  exportFileName={`character_stats_${new Date().toISOString().split('T')[0]}`}
-                  onExport={(exportData, filename) => {
-                    // Handle export via ExportManager
-                    console.log('Character data export requested:', { exportData, filename });
-                  }}
-                  darkMode={darkMode}
-                  selectable={true}
-                  onSelectionChange={(selectedRows) => {
-                    console.log('Selected characters:', selectedRows);
-                  }}
-                />
-              </div>
+              <>
+                {/* Excel Export Button */}
+                <div className={`rounded-2xl shadow-xl p-6 ${darkMode ? 'bg-gray-800' : 'bg-white'}`}>
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h3 className={`text-lg font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>
+                        Export Data Tables
+                      </h3>
+                      <p className={`text-sm mt-1 ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
+                        Download all data tables to Excel (.xlsx) with full formatting
+                      </p>
+                    </div>
+                    <button
+                      onClick={handleExcelExport}
+                      className={`flex items-center gap-2 px-6 py-3 rounded-lg font-semibold transition-all shadow-lg hover:shadow-xl ${
+                        darkMode 
+                          ? 'bg-blue-600 hover:bg-blue-700 text-white' 
+                          : 'bg-blue-500 hover:bg-blue-600 text-white'
+                      }`}
+                    >
+                      <Download size={20} />
+                      Export to Excel
+                    </button>
+                  </div>
+                </div>
+
+                {/* Character Averages Table */}
+                <div className={`rounded-2xl shadow-xl p-6 ${darkMode ? 'bg-gray-800' : 'bg-white'}`}>
+                  <div className="mb-4">
+                    <h3 className={`text-xl font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>
+                      Character Performance Averages
+                    </h3>
+                    <p className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
+                      Aggregated statistics showing overall performance across all matches
+                    </p>
+                  </div>
+                  <DataTable
+                    data={prepareCharacterAveragesData(aggregatedData)}
+                    columns={getCharacterAveragesTableConfig(darkMode).columns}
+                    title="Character Performance Averages"
+                    exportFileName={`character_averages_${new Date().toISOString().split('T')[0]}`}
+                    onExport={handleCharacterAveragesExport}
+                    darkMode={darkMode}
+                    selectable={true}
+                    onSelectionChange={(selectedRows) => {
+                      console.log('Selected characters (averages):', selectedRows);
+                    }}
+                  />
+                </div>
+
+                {/* Match Details Table */}
+                <div className={`rounded-2xl shadow-xl p-6 ${darkMode ? 'bg-gray-800' : 'bg-white'}`}>
+                  <div className="mb-4">
+                    <h3 className={`text-xl font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>
+                      Individual Match Performance Details
+                    </h3>
+                    <p className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
+                      Per-match statistics for detailed analysis and trend identification
+                    </p>
+                  </div>
+                  <DataTable
+                    data={prepareMatchDetailsData(aggregatedData)}
+                    columns={getMatchDetailsTableConfig(darkMode).columns}
+                    title="Individual Match Performance Details"
+                    exportFileName={`match_details_${new Date().toISOString().split('T')[0]}`}
+                    onExport={handleMatchDetailsExport}
+                    darkMode={darkMode}
+                    selectable={true}
+                    onSelectionChange={(selectedRows) => {
+                      console.log('Selected match details:', selectedRows);
+                    }}
+                  />
+                </div>
+              </>
             )}
 
-            {/* Position Analysis Table */}
-            {positionData && Object.keys(positionData).length > 0 && (
+            {/* Position Analysis Table - DISABLED FOR NOW */}
+            {/* {positionData && Object.keys(positionData).length > 0 && (
               <div className={`rounded-2xl shadow-xl p-6 ${darkMode ? 'bg-gray-800' : 'bg-white'}`}>
                 <DataTable
                   data={preparePositionData(positionData)}
@@ -3997,10 +4725,10 @@ export default function App() {
                   }}
                 />
               </div>
-            )}
+            )} */}
 
-            {/* Meta Analysis Table */}
-            {aggregatedData && Object.keys(aggregatedData).length > 0 && (
+            {/* Meta Analysis Table - DISABLED FOR NOW */}
+            {/* {aggregatedData && Object.keys(aggregatedData).length > 0 && (
               <div className={`rounded-2xl shadow-xl p-6 ${darkMode ? 'bg-gray-800' : 'bg-white'}`}>
                 <DataTable
                   data={(() => {
@@ -4046,7 +4774,7 @@ export default function App() {
                   }}
                 />
               </div>
-            )}
+            )} */}
           </div>
         )}
 

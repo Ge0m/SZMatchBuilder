@@ -10,6 +10,11 @@ module.exports = {
         'dragon-orange': '#f59e0b',
         'dragon-red': '#dc2626',
         'dragon-purple': '#7c3aed',
+        green: {
+          500: '#22c55e',
+          600: '#16a34a',
+          700: '#15803d',
+        },
       },
       animation: {
         'pulse-glow': 'pulse-glow 2s ease-in-out infinite',
