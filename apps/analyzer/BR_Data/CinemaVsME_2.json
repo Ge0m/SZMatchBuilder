@@ -1,9 +1,6 @@
 {
   "TeamBattleResults": {
-    "teams": [
-      "Cinema",
-      "Malevolant Souls"
-    ],
+    "teams": ["Cinema", "Malevolant Souls"],
     "battleResults": {
       "BattleResults": {
         "battleWinLose": "Lose",

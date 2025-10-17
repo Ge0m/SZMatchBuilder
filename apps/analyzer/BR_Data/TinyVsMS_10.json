@@ -1,9 +1,6 @@
 {
   "TeamBattleResults": {
-    "teams": [
-      "Tiny Terrors",
-      "Malevolant Souls"
-    ],
+    "teams": ["Tiny Terrors", "Malevolant Souls"],
     "battleResult": {
       "battleWinLose": "Win",
       "battleSettlementIndex": 0,
@@ -124,10 +121,7 @@
             "originalCharacter": {
               "key": "3060_02"
             },
-            "changedStates": [
-              "GuardedDamage",
-              "Damage"
-            ],
+            "changedStates": ["GuardedDamage", "Damage"],
             "preChangedStates": []
           },
           "battleCount": {
@@ -1778,8 +1772,5 @@
       }
     }
   },
-  "teams": [
-    "Tiny Terros",
-    "Malevolant Souls"
-  ]
+  "teams": ["Tiny Terros", "Malevolant Souls"]
 }

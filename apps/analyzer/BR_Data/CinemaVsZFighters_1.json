@@ -1,9 +1,6 @@
 {
   "TeamBattleResults": {
-    "teams": [
-      "Cinema",
-      "Z-Fighters"
-    ],
+    "teams": ["Cinema", "Z-Fighters"],
     "battleResults": {
       "BattleResults": {
         "battleWinLose": "Lose",
@@ -131,10 +128,7 @@
               "originalCharacter": {
                 "key": "3000_01"
               },
-              "changedStates": [
-                "Damage",
-                "KnockDown"
-              ],
+              "changedStates": ["Damage", "KnockDown"],
               "preChangedStates": []
             },
             "battleCount": {

@@ -1,9 +1,6 @@
 {
   "TeamBattleResults": {
-    "teams": [
-      "Tiny Terrors",
-      "Malevolant Souls"
-    ],
+    "teams": ["Tiny Terrors", "Malevolant Souls"],
     "battleResult": {
       "battleWinLose": "Win",
       "battleSettlementIndex": 0,
@@ -1705,8 +1702,5 @@
       }
     }
   },
-  "teams": [
-    "Tiny Terros",
-    "Malevolant Souls"
-  ]
+  "teams": ["Tiny Terros", "Malevolant Souls"]
 }

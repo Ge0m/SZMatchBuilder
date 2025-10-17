@@ -1,9 +1,6 @@
 {
   "TeamBattleResults": {
-    "teams": [
-      "Cinema",
-      "Cold Kingdom"
-    ],
+    "teams": ["Cinema", "Cold Kingdom"],
     "battleResults": {
       "BattleResults": {
         "battleWinLose": "Win",
