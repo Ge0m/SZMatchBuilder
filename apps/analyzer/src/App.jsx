@@ -1318,6 +1318,9 @@ function getAggregatedCharacterData(files, charMap, capsuleMap = {}, aiStrategie
     
     return {
       ...char,
+      dps: Math.round(damagePerSecond * 10) / 10, // Add DPS field
+      efficiency: Math.round(damageEfficiency * 100) / 100, // Add efficiency field
+      hpRetention: Math.round(healthRetention * 1000) / 10, // Add HP retention % field
       combatPerformanceScore: Math.round(combatPerformanceScore * 100) / 100
     };
   }).sort((a, b) => {

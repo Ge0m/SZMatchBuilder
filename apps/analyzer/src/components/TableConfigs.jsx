@@ -37,10 +37,10 @@ export const getCharacterAveragesTableConfig = (darkMode = false) => ({
   
   columnGroups: [
     { name: 'Identity & Context', columns: ['name', 'primaryTeam', 'matchCount'] },
-    { name: 'Combat Performance', columns: ['avgDamage', 'avgTaken', 'efficiency', 'dps', 'combatScore', 'avgBattleTime'] },
+    { name: 'Combat Performance', columns: ['avgDamage', 'avgTaken', 'efficiency', 'dps', 'combatScore', 'avgBattleTime', 'totalKills', 'avgKills'] },
     { name: 'Survival & Health', columns: ['avgHPGaugeValueMax', 'avgHealth', 'healthRetention', 'survivalRate', 'avgGuards', 'avgRevengeCounters', 'avgSuperCounters', 'avgZCounters'] },
     { name: 'Special Abilities', columns: ['avgSPM1', 'avgSPM2', 'avgSkill1', 'avgSkill2', 'avgUltimates', 'avgEnergyBlasts', 'avgCharges', 'avgSparking', 'avgDragonDashMileage'] },
-    { name: 'Combat Mechanics', columns: ['avgMaxCombo', 'avgMaxComboDamage', 'avgThrows', 'avgLightningAttacks', 'avgVanishingAttacks', 'avgDragonHoming', 'avgSpeedImpacts', 'speedImpactWinRate', 'avgSparkingCombo', 'totalKills', 'avgKills'] },
+    { name: 'Combat Mechanics', columns: ['avgMaxCombo', 'avgMaxComboDamage', 'avgThrows', 'avgLightningAttacks', 'avgVanishingAttacks', 'avgDragonHoming', 'avgSpeedImpacts', 'speedImpactWinRate', 'avgSparkingCombo'] },
     { name: 'Build & Equipment', columns: ['buildArchetype', 'damageCapsules', 'defensiveCapsules', 'utilityCapsules', 'topCapsules', 'primaryAIStrategy'] },
     { name: 'Form Changes', columns: ['hasMultipleForms', 'formCount', 'formHistory'] }
   ],
@@ -97,7 +97,7 @@ export const getCharacterAveragesTableConfig = (darkMode = false) => ({
     },
 
     // ========================================================================
-    // B. COMBAT PERFORMANCE (6 columns)
+    // B. COMBAT PERFORMANCE (8 columns)
     // ========================================================================
     {
       key: 'avgDamage',
@@ -193,6 +193,35 @@ export const getCharacterAveragesTableConfig = (darkMode = false) => ({
           <Clock className="w-4 h-4 text-gray-500" />
           <span className="font-mono">{formatTime(value)}</span>
         </div>
+      )
+    },
+    {
+      key: 'totalKills',
+      header: 'Total KOs',
+      accessor: (row) => row.totalKills,
+      sortType: 'number',
+      sortable: true,
+      filterable: false,
+      group: 'Combat Performance',
+      exportFormat: { alignment: 'right', numFmt: '0', bold: true, icon: 'trophy' },
+      render: (row, value) => (
+        <div className="flex items-center gap-1">
+          <Trophy className="w-4 h-4 text-yellow-500" />
+          <span className="font-mono font-bold">{value}</span>
+        </div>
+      )
+    },
+    {
+      key: 'avgKills',
+      header: 'Avg KOs',
+      accessor: (row) => row.avgKills,
+      sortType: 'number',
+      sortable: true,
+      filterable: false,
+      group: 'Combat Performance',
+      exportFormat: { alignment: 'right', numFmt: '0.0' },
+      render: (row, value) => (
+        <span className="font-mono text-yellow-600">{value.toFixed(1)}</span>
       )
     },
 
@@ -445,7 +474,7 @@ export const getCharacterAveragesTableConfig = (darkMode = false) => ({
     },
 
     // ========================================================================
-    // E. COMBAT MECHANICS (11 columns)
+    // E. COMBAT MECHANICS (9 columns)
     // ========================================================================
     {
       key: 'avgMaxCombo',
@@ -567,35 +596,6 @@ export const getCharacterAveragesTableConfig = (darkMode = false) => ({
       exportFormat: { alignment: 'right', numFmt: '0.0', highlight: 'gold' },
       render: (row, value) => (
         <span className="font-mono text-orange-600 font-bold">{value.toFixed(1)}</span>
-      )
-    },
-    {
-      key: 'totalKills',
-      header: 'Total KOs',
-      accessor: (row) => row.totalKills,
-      sortType: 'number',
-      sortable: true,
-      filterable: false,
-      group: 'Combat Mechanics',
-      exportFormat: { alignment: 'right', numFmt: '0', bold: true, icon: 'trophy' },
-      render: (row, value) => (
-        <div className="flex items-center gap-1">
-          <Trophy className="w-4 h-4 text-yellow-500" />
-          <span className="font-mono font-bold">{value}</span>
-        </div>
-      )
-    },
-    {
-      key: 'avgKills',
-      header: 'Avg KOs',
-      accessor: (row) => row.avgKills,
-      sortType: 'number',
-      sortable: true,
-      filterable: false,
-      group: 'Combat Mechanics',
-      exportFormat: { alignment: 'right', numFmt: '0.0' },
-      render: (row, value) => (
-        <span className="font-mono text-yellow-600">{value.toFixed(1)}</span>
       )
     },
 
