@@ -7,58 +7,227 @@
 
 /**
  * Process character data into team-grouped structure
+ * IMPORTANT: Characters are filtered to only include matches played ON that specific team
  * @param {Array} characterData - Aggregated character performance data
  * @returns {Array} Team groups with aggregated stats and character details
  */
 export function processTeamGroups(characterData) {
-  // Group characters by primary team
+  // Group characters by team, filtering matches to only those for that specific team
   const teamMap = new Map();
   
   characterData.forEach(character => {
-    const teamName = character.primaryTeam || 'No Team';
-    
-    if (!teamMap.has(teamName)) {
-      teamMap.set(teamName, {
-        teamName,
-        characters: [],
-        totalMatches: 0
+    // Get all teams this character played on
+    if (character.matches && Array.isArray(character.matches)) {
+      const teamMatches = new Map(); // teamName -> array of matches
+      
+      character.matches.forEach(match => {
+        const teamName = match.team || 'No Team';
+        if (!teamMatches.has(teamName)) {
+          teamMatches.set(teamName, []);
+        }
+        teamMatches.get(teamName).push(match);
+      });
+      
+      // Create a separate character entry for each team they played on
+      teamMatches.forEach((matches, teamName) => {
+        if (!teamMap.has(teamName)) {
+          teamMap.set(teamName, {
+            teamName,
+            characters: []
+          });
+        }
+        
+        // Recalculate ALL character stats based ONLY on matches for this team
+        const teamSpecificCharacter = recalculateCharacterStatsForTeam(character, matches, teamName);
+        teamMap.get(teamName).characters.push(teamSpecificCharacter);
       });
     }
-    
-    const team = teamMap.get(teamName);
-    team.characters.push(character);
-    team.totalMatches += character.matchCount || 0;
   });
   
-  // Convert to array and sort by total matches (descending)
-  const teams = Array.from(teamMap.values()).sort((a, b) => b.totalMatches - a.totalMatches);
+  // Convert to array (sorting will happen after aggregates are calculated)
+  const teams = Array.from(teamMap.values());
   
   // Calculate team-level aggregates for each team
   teams.forEach(team => {
     calculateTeamAggregates(team);
   });
   
+  // Sort teams by win rate (descending), then by matches (descending) as tiebreaker
+  teams.sort((a, b) => {
+    const aWinRate = a.aggregates?.winRate || 0;
+    const bWinRate = b.aggregates?.winRate || 0;
+    
+    // Primary sort: Win rate (descending)
+    if (bWinRate !== aWinRate) {
+      return bWinRate - aWinRate;
+    }
+    
+    // Secondary sort: Total matches (descending, more experienced teams ranked higher)
+    const aMatches = a.aggregates?.matchCount || 0;
+    const bMatches = b.aggregates?.matchCount || 0;
+    return bMatches - aMatches;
+  });
+  
   return teams;
+}
+
+/**
+ * Recalculate character stats based only on matches for a specific team
+ * Matches the logic from getTeamAggregatedData in App.jsx
+ */
+function recalculateCharacterStatsForTeam(character, teamMatches, teamName) {
+  const matchCount = teamMatches.length;
+  
+  // Aggregate stats from team-specific matches only
+  const totalDamage = teamMatches.reduce((sum, m) => sum + (m.damageDone || 0), 0);
+  const totalTaken = teamMatches.reduce((sum, m) => sum + (m.damageTaken || 0), 0);
+  const totalHealth = teamMatches.reduce((sum, m) => sum + (m.hPGaugeValue || 0), 0);
+  const totalBattleTime = teamMatches.reduce((sum, m) => sum + (m.battleTime || 0), 0);
+  const totalHPGaugeValueMax = teamMatches.reduce((sum, m) => sum + (m.hPGaugeValueMax || 0), 0);
+  const totalSPM1 = teamMatches.reduce((sum, m) => sum + (m.spm1Count || 0), 0);
+  const totalSPM2 = teamMatches.reduce((sum, m) => sum + (m.spm2Count || 0), 0);
+  const totalEXA1 = teamMatches.reduce((sum, m) => sum + (m.exa1Count || 0), 0);
+  const totalEXA2 = teamMatches.reduce((sum, m) => sum + (m.exa2Count || 0), 0);
+  const totalUltimates = teamMatches.reduce((sum, m) => sum + (m.ultimatesUsed || 0), 0);
+  const totalEnergyBlasts = teamMatches.reduce((sum, m) => sum + (m.shotEnergyBulletCount || 0), 0);
+  const totalCharges = teamMatches.reduce((sum, m) => sum + (m.chargeCount || 0), 0);
+  const totalSparking = teamMatches.reduce((sum, m) => sum + (m.sparkingCount || 0), 0);
+  const totalGuards = teamMatches.reduce((sum, m) => sum + (m.guardCount || 0), 0);
+  const totalRevengeCounters = teamMatches.reduce((sum, m) => sum + (m.revengeCounterCount || 0), 0);
+  const totalSuperCounters = teamMatches.reduce((sum, m) => sum + (m.superCounterCount || 0), 0);
+  const totalZCounters = teamMatches.reduce((sum, m) => sum + (m.zCounterCount || 0), 0);
+  const totalThrows = teamMatches.reduce((sum, m) => sum + (m.throwCount || 0), 0);
+  const totalLightningAttacks = teamMatches.reduce((sum, m) => sum + (m.lightningAttackCount || 0), 0);
+  const totalVanishingAttacks = teamMatches.reduce((sum, m) => sum + (m.vanishingAttackCount || 0), 0);
+  const totalDragonHoming = teamMatches.reduce((sum, m) => sum + (m.dragonHomingCount || 0), 0);
+  const totalSpeedImpacts = teamMatches.reduce((sum, m) => sum + (m.speedImpactCount || 0), 0);
+  const totalSpeedImpactWins = teamMatches.reduce((sum, m) => sum + (m.speedImpactWins || 0), 0);
+  const totalDragonDashMileage = teamMatches.reduce((sum, m) => sum + (m.dragonDashMileage || 0), 0);
+  const totalMaxCombo = teamMatches.reduce((sum, m) => sum + (m.maxComboNum || 0), 0);
+  const totalMaxComboDamage = teamMatches.reduce((sum, m) => sum + (m.maxComboDamage || 0), 0);
+  const totalKills = teamMatches.reduce((sum, m) => sum + (m.kills || 0), 0);
+  const totalDamageCaps = teamMatches.reduce((sum, m) => sum + (m.capsuleTypes?.damage || 0), 0);
+  const totalDefensiveCaps = teamMatches.reduce((sum, m) => sum + (m.capsuleTypes?.defensive || 0), 0);
+  const totalUtilityCaps = teamMatches.reduce((sum, m) => sum + (m.capsuleTypes?.utility || 0), 0);
+  
+  const wins = teamMatches.filter(m => m.won).length;
+  const losses = matchCount - wins;
+  
+  // Calculate averages
+  const avgDamage = Math.round(totalDamage / matchCount);
+  const avgTaken = Math.round(totalTaken / matchCount);
+  const avgHealth = Math.round(totalHealth / matchCount);
+  const avgBattleTime = Math.round((totalBattleTime / matchCount) * 10) / 10;
+  const avgHPGaugeValueMax = Math.round(totalHPGaugeValueMax / matchCount);
+  const avgSPM1 = Math.round((totalSPM1 / matchCount) * 10) / 10;
+  const avgSPM2 = Math.round((totalSPM2 / matchCount) * 10) / 10;
+  const avgEXA1 = Math.round((totalEXA1 / matchCount) * 10) / 10;
+  const avgEXA2 = Math.round((totalEXA2 / matchCount) * 10) / 10;
+  const avgUltimates = Math.round((totalUltimates / matchCount) * 10) / 10;
+  const avgEnergyBlasts = Math.round((totalEnergyBlasts / matchCount) * 10) / 10;
+  const avgCharges = Math.round((totalCharges / matchCount) * 10) / 10;
+  const avgSparking = Math.round((totalSparking / matchCount) * 10) / 10;
+  const avgGuards = Math.round((totalGuards / matchCount) * 10) / 10;
+  const avgRevengeCounters = Math.round((totalRevengeCounters / matchCount) * 10) / 10;
+  const avgSuperCounters = Math.round((totalSuperCounters / matchCount) * 10) / 10;
+  const avgZCounters = Math.round((totalZCounters / matchCount) * 10) / 10;
+  const avgThrows = Math.round((totalThrows / matchCount) * 10) / 10;
+  const avgLightningAttacks = Math.round((totalLightningAttacks / matchCount) * 10) / 10;
+  const avgVanishingAttacks = Math.round((totalVanishingAttacks / matchCount) * 10) / 10;
+  const avgDragonHoming = Math.round((totalDragonHoming / matchCount) * 10) / 10;
+  const avgSpeedImpacts = Math.round((totalSpeedImpacts / matchCount) * 10) / 10;
+  const avgSpeedImpactWins = Math.round((totalSpeedImpactWins / matchCount) * 10) / 10;
+  const avgDragonDashMileage = Math.round((totalDragonDashMileage / matchCount) * 10) / 10;
+  const avgMaxCombo = Math.round((totalMaxCombo / matchCount) * 10) / 10;
+  const avgMaxComboDamage = Math.round(totalMaxComboDamage / matchCount);
+  const avgKills = Math.round((totalKills / matchCount) * 10) / 10;
+  const avgDamageCaps = Math.round((totalDamageCaps / matchCount) * 10) / 10;
+  const avgDefensiveCaps = Math.round((totalDefensiveCaps / matchCount) * 10) / 10;
+  const avgUtilityCaps = Math.round((totalUtilityCaps / matchCount) * 10) / 10;
+  
+  // Calculate derived stats
+  const dps = Math.round((avgDamage / Math.max(avgBattleTime, 0.1)) * 10) / 10;
+  const efficiency = Math.round((avgDamage / Math.max(avgTaken, 1)) * 100) / 100;
+  const healthRetention = avgHPGaugeValueMax > 0 ? (avgHealth / avgHPGaugeValueMax) * 100 : 0;
+  const winRate = matchCount > 0 ? (wins / matchCount) * 100 : 0;
+  const speedImpactWinRate = totalSpeedImpacts > 0 ? Math.round((totalSpeedImpactWins / totalSpeedImpacts) * 1000) / 10 : 0;
+  
+  // Calculate combat performance score (same formula as App.jsx)
+  const baseScore = (
+    (avgDamage / 100000) * 35 +
+    (efficiency) * 25 +
+    (dps / 1000) * 25 +
+    (healthRetention / 100) * 15
+  );
+  const experienceMultiplier = Math.min(1.25, 1.0 + (matchCount - 1) * (0.25 / 11));
+  const combatPerformanceScore = baseScore * experienceMultiplier;
+  
+  // Return character with recalculated stats for this team only
+  return {
+    ...character,
+    primaryTeam: teamName,
+    matchCount,
+    wins,
+    losses,
+    matches: teamMatches,
+    avgDamage,
+    avgTaken,
+    avgHealth,
+    avgBattleTime,
+    avgHPGaugeValueMax,
+    avgSPM1,
+    avgSPM2,
+    avgEXA1,
+    avgEXA2,
+    avgUltimates,
+    avgEnergyBlasts,
+    avgCharges,
+    avgSparking,
+    avgGuards,
+    avgRevengeCounters,
+    avgSuperCounters,
+    avgZCounters,
+    avgThrows,
+    avgLightningAttacks,
+    avgVanishingAttacks,
+    avgDragonHoming,
+    avgSpeedImpacts,
+    avgSpeedImpactWins,
+    avgDragonDashMileage,
+    avgMaxCombo,
+    avgMaxComboDamage,
+    avgKills,
+    avgDamageCaps,
+    avgDefensiveCaps,
+    avgUtilityCaps,
+    totalKills,
+    dps,
+    efficiency,
+    healthRetention,
+    winRate,
+    speedImpactWinRate,
+    combatPerformanceScore
+  };
 }
 
 /**
  * Calculate aggregate statistics at the team level
  * Uses top 5 characters (by combat score) for most stats
+ * Matches the logic from getTeamAggregatedData in App.jsx
  * @param {Object} team - Team object with characters array
  */
 function calculateTeamAggregates(team) {
   const characters = team.characters;
-  const totalMatches = team.totalMatches;
   
-  if (characters.length === 0 || totalMatches === 0) return;
+  if (characters.length === 0) return;
   
   // Sort characters by combat performance score (descending) and get top 5
   const top5Characters = [...characters]
     .sort((a, b) => (b.combatPerformanceScore || 0) - (a.combatPerformanceScore || 0))
     .slice(0, 5);
   
-  // Calculate team win rate and match count based on unique matches (not per character)
-  // Group matches by fileName to get unique team matches
+  // Calculate team wins, losses, and match count based on unique matches
+  // Use fileName as unique match identifier (one file = one team match)
   const uniqueMatches = new Map();
   characters.forEach(char => {
     if (char.matches && Array.isArray(char.matches)) {
@@ -75,6 +244,7 @@ function calculateTeamAggregates(team) {
   
   const totalUniqueMatches = uniqueMatches.size;
   const teamWins = Array.from(uniqueMatches.values()).filter(won => won).length;
+  const teamLosses = totalUniqueMatches - teamWins;
   const winRate = totalUniqueMatches > 0 ? (teamWins / totalUniqueMatches) * 100 : 0;
   
   // Calculate top 5 HP totals first (needed for HP retention)
@@ -86,7 +256,9 @@ function calculateTeamAggregates(team) {
   
   // Initialize aggregates
   team.aggregates = {
-    matchCount: totalUniqueMatches, // Use unique match count, not sum of character matches
+    matchCount: totalUniqueMatches, // Use unique match count (one file = one match)
+    wins: teamWins,                  // Add wins column
+    losses: teamLosses,              // Add losses column
     winRate: Math.round(winRate * 10) / 10, // Win rate as percentage with 1 decimal
     
     // Combat Performance - TOP 5 TOTALS (not averages)

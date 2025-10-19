@@ -36,7 +36,7 @@ export const getCharacterAveragesTableConfig = (darkMode = false) => ({
   description: 'Aggregated statistics showing overall performance across all matches',
   
   columnGroups: [
-    { name: 'Identity & Context', columns: ['name', 'primaryTeam', 'matchCount'] },
+    { name: 'Identity & Context', columns: ['name', 'primaryTeam', 'matchCount', 'wins', 'losses'] },
     { name: 'Combat Performance', columns: ['avgDamage', 'avgTaken', 'efficiency', 'dps', 'combatScore', 'avgBattleTime', 'totalKills', 'avgKills'] },
     { name: 'Survival & Health', columns: ['avgHPGaugeValueMax', 'avgHealth', 'healthRetention', 'survivalRate', 'avgGuards', 'avgRevengeCounters', 'avgSuperCounters', 'avgZCounters'] },
     { name: 'Special Abilities', columns: ['avgSPM1', 'avgSPM2', 'avgSkill1', 'avgSkill2', 'avgUltimates', 'avgEnergyBlasts', 'avgCharges', 'avgSparking', 'avgDragonDashMileage'] },
@@ -93,6 +93,32 @@ export const getCharacterAveragesTableConfig = (darkMode = false) => ({
           <Users className="w-4 h-4 text-gray-500" />
           <span className="font-mono">{value}</span>
         </div>
+      )
+    },
+    {
+      key: 'wins',
+      header: 'Wins',
+      accessor: (row) => row.wins,
+      sortType: 'number',
+      sortable: true,
+      filterable: false,
+      group: 'Identity & Context',
+      exportFormat: { alignment: 'right', numFmt: '0' },
+      render: (row, value) => (
+        <span className="font-mono text-green-600">{value}</span>
+      )
+    },
+    {
+      key: 'losses',
+      header: 'Losses',
+      accessor: (row) => row.losses,
+      sortType: 'number',
+      sortable: true,
+      filterable: false,
+      group: 'Identity & Context',
+      exportFormat: { alignment: 'right', numFmt: '0' },
+      render: (row, value) => (
+        <span className="font-mono text-red-600">{value}</span>
       )
     },
 

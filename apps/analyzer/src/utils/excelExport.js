@@ -549,7 +549,7 @@ function applyColumnFormatting(cell, column, rowValues, rowNumber, timeColumnAve
   // Number columns with comma separator
   if (['avgDamage', 'avgTaken', 'avgMaxComboDamage', 'avgHPGaugeValueMax', 'avgHealth',
        'damageDone', 'damageTaken', 'hPGaugeValue', 'hPGaugeValueMax', 'totalKills',
-       'maxHP', 'hpMax', 'hpRemaining'].includes(key)) {
+       'maxHP', 'hpMax', 'hpRemaining', 'matchCount', 'wins', 'losses'].includes(key)) {
     cell.numFmt = '#,##0';
     cell.alignment = { horizontal: 'right' };
   }
@@ -620,7 +620,7 @@ function applyColumnFormatting(cell, column, rowValues, rowNumber, timeColumnAve
         iconColor = isTeamRow ? 'FFFFFFFF' : 'FF6B7280'; // White for team rows, gray for character rows
       }
       
-      cell.value = `${durationIcon}${cell.value}`;
+      cell.value = `${cell.value}${durationIcon}`;
       
       // Apply color to the entire cell text (icon + time)
       cell.font = { 
@@ -980,8 +980,11 @@ async function generateTeamPerformanceMatrix(workbook, data, includeFormatting) 
   // Add team name column at the start
   columns.unshift(teamNameColumn);
   
-  // Replace "Primary Team" with "Win Rate" and update headers for team-level stats
+  // Replace "Primary Team" with wins, losses, and "Win Rate" and update headers for team-level stats
   const teamHeaderMapping = {
+    'matchCount': 'Matches',
+    'wins': 'Wins',
+    'losses': 'Losses',
     'primaryTeam': 'Win Rate',
     'avgDamage': 'Damage',
     'avgTaken': 'Taken',
@@ -1079,7 +1082,10 @@ async function generateTeamPerformanceMatrix(workbook, data, includeFormatting) 
     
     // Mapping for team aggregate fields to column keys
     const teamFieldMapping = {
-      'primaryTeam': 'winRate', // Replace primaryTeam with winRate
+      'matchCount': 'matchCount',   // Keep as is - matches played
+      'wins': 'wins',                // Add wins column
+      'losses': 'losses',            // Add losses column
+      'primaryTeam': 'winRate',      // Replace primaryTeam with winRate
       'avgDamage': 'top5TotalDamage',
       'avgTaken': 'top5TotalTaken',
       'efficiency': 'top5Efficiency',
@@ -1272,14 +1278,15 @@ function applyTeamMatrixFormatting(sheet, columns, columnGroups, dataRowCount, t
           fgColor: { argb: 'FF7F1D1D' } // Dark maroon (red-900)
         };
         
-        // Team name column (col 2) is left aligned, others follow normal rules
-        cell.alignment = { 
-          horizontal: column.key === 'name' ? 'left' : (column.key.includes('Rate') || column.key.includes('Retention') ? 'right' : 'center'),
-          vertical: 'middle'
-        };
-        
-        // Apply column-specific formatting for values (but NOT conditional formatting colors)
+        // Apply column-specific formatting for values first (this sets alignment)
         applyColumnFormatting(cell, column, row.values, rowNumber, timeColumnAverages, true); // Pass true for isTeamRow
+        
+        // Ensure vertical alignment is middle for team rows
+        if (cell.alignment) {
+          cell.alignment = { ...cell.alignment, vertical: 'middle' };
+        } else {
+          cell.alignment = { vertical: 'middle' };
+        }
         
         // Override any background colors from conditional formatting - force maroon
         cell.fill = {

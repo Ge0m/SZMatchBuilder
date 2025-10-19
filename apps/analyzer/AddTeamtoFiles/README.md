@@ -13,7 +13,7 @@ Examples:
 
 node wrapBattleResultsWithTeam.js D:/path/to/BattleResultFiles/file.json
 
-node wrapBattleResultsWithTeam.js D:/path/to/BattleResultFiles --teams="Tiny Terros,Malevolant Souls"
+node wrapBattleResultsWithTeam.js D:/path/to/BattleResultFiles --teams="Tiny Terrors,Malevolant Souls"
 
 Overwrite originals:
 
