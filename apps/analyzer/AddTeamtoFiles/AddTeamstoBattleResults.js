@@ -2,7 +2,7 @@ const fs = require('fs');
 const path = require('path');
 
 const folderPath = 'D:/DBZL/SZLeague/GitHub/SZMatchBuilder/BattleResultFiles';
-const teamsToAdd = ["Tiny Terros", "Malevolant Souls"];
+const teamsToAdd = ["Tiny Terrors", "Malevolant Souls"];
 
 fs.readdirSync(folderPath).forEach(file => {
   if (file.endsWith('.json')) {

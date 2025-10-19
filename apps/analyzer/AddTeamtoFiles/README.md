@@ -13,11 +13,11 @@ Examples:
 
 node wrapBattleResultsWithTeam.js D:/path/to/BattleResultFiles/file.json
 
-node wrapBattleResultsWithTeam.js D:/path/to/BattleResultFiles --teams="Tiny Terros,Malevolant Souls"
+node wrapBattleResultsWithTeam.js D:/path/to/BattleResultFiles --teams="Tiny Terrors,Malevolant Souls"
 
 Overwrite originals:
 
-node wrapBattleResultsWithTeam.js D:/path/to/BattleResultFiles --teams="Cinema,Cold Kingdom" --inplace
+node wrapBattleResultsWithTeam.js --teams="Cinema,Cold Kingdom" --inplace
 
 node "d:/DBZL/SZLeague/GitHub/SZMatchBuilder/apps/analyzer/AddTeamtoFiles/wrapBattleResultsWithTeam.js" --teams="Master and Student,No Team" --inplace
 

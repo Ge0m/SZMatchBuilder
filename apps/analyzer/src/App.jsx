@@ -863,7 +863,7 @@ function getAggregatedCharacterData(files, charMap, capsuleMap = {}, aiStrategie
   const characterStats = {};
   
   // Helper function to process a characterRecord (extracted to avoid duplication)
-  function processCharacterRecord(characterRecord, characterIdRecord, teams = null, fileName = '') {
+  function processCharacterRecord(characterRecord, characterIdRecord, teams = null, fileName = '', battleWinLose = null) {
     Object.keys(characterRecord).forEach(key => {
       const char = characterRecord[key];
       const stats = extractStats(char, charMap, capsuleMap, null); // No position for aggregated data
@@ -872,13 +872,16 @@ function getAggregatedCharacterData(files, charMap, capsuleMap = {}, aiStrategie
       // Determine team association
       let teamName = null;
       let opponentTeam = null;
+      let isTeam1 = false;
       if (teams && Array.isArray(teams) && teams.length >= 2) {
         if (key.includes('AlliesTeamMember') || key.includes('１Ｐ')) {
           teamName = teams[0];
           opponentTeam = teams[1];
+          isTeam1 = true;
         } else if (key.includes('EnemyTeamMember') || key.includes('２Ｐ')) {
           teamName = teams[1];
           opponentTeam = teams[0];
+          isTeam1 = false;
         }
       }
       
@@ -1033,8 +1036,21 @@ function getAggregatedCharacterData(files, charMap, capsuleMap = {}, aiStrategie
         formChangeCount = char.formChangeHistory.length; // Count number of transformations
       }
       
-      // Determine win/loss status (character survived = won)
-      const won = stats.hPGaugeValue > 0;
+      // Determine win/loss status based on TEAM victory, not character survival
+      // battleWinLose is from team 1's perspective: 'Win' means team 1 won, 'Lose' means team 2 won
+      let won = false;
+      if (battleWinLose) {
+        if (isTeam1) {
+          // Team 1 character: won if battleWinLose === 'Win'
+          won = battleWinLose === 'Win';
+        } else {
+          // Team 2 character: won if battleWinLose === 'Lose' (team 1 lost)
+          won = battleWinLose === 'Lose';
+        }
+      } else {
+        // Fallback to character survival if battleWinLose not available
+        won = stats.hPGaugeValue > 0;
+      }
       
       // Add individual match data for meta analysis
       charData.matches.push({
@@ -1141,7 +1157,7 @@ function getAggregatedCharacterData(files, charMap, capsuleMap = {}, aiStrategie
     if (file.error) return;
     
     const fileName = file.name || file.fileName || '';
-    let characterRecord, characterIdRecord, teams;
+    let characterRecord, characterIdRecord, teams, battleWinLose;
     
     // Handle TeamBattleResults format (current BR_Data structure)
     if (file.content.TeamBattleResults) {
@@ -1150,16 +1166,19 @@ function getAggregatedCharacterData(files, charMap, capsuleMap = {}, aiStrategie
       if (file.content.TeamBattleResults.battleResult) {
         characterRecord = file.content.TeamBattleResults.battleResult.characterRecord;
         characterIdRecord = file.content.TeamBattleResults.battleResult.characterIdRecord;
+        battleWinLose = file.content.TeamBattleResults.battleResult.battleWinLose;
       }
       // Check for BattleResults (capital R) - Cinema files format
       else if (file.content.TeamBattleResults.BattleResults) {
         characterRecord = file.content.TeamBattleResults.BattleResults.characterRecord;
         characterIdRecord = file.content.TeamBattleResults.BattleResults.characterIdRecord;
+        battleWinLose = file.content.TeamBattleResults.BattleResults.battleWinLose;
       }
       // Check if data is directly in TeamBattleResults (new wrapper format)
       else if (file.content.TeamBattleResults.characterRecord) {
         characterRecord = file.content.TeamBattleResults.characterRecord;
         characterIdRecord = file.content.TeamBattleResults.characterIdRecord;
+        battleWinLose = file.content.TeamBattleResults.battleWinLose;
       }
     }
     // Handle new format with teams array at the top
@@ -1177,7 +1196,12 @@ function getAggregatedCharacterData(files, charMap, capsuleMap = {}, aiStrategie
         }
         
         if (teamCharRecord) {
-          processCharacterRecord(teamCharRecord, teamCharIdRecord, file.content.teams, fileName);
+          // Extract battleWinLose for team format
+          let teamBattleWinLose;
+          if (team.BattleResults) {
+            teamBattleWinLose = team.BattleResults.battleWinLose;
+          }
+          processCharacterRecord(teamCharRecord, teamCharIdRecord, file.content.teams, fileName, teamBattleWinLose);
         }
       });
       return; // Already processed all teams
@@ -1186,18 +1210,20 @@ function getAggregatedCharacterData(files, charMap, capsuleMap = {}, aiStrategie
     else if (file.content.BattleResults) {
       characterRecord = file.content.BattleResults.characterRecord;
       characterIdRecord = file.content.BattleResults.characterIdRecord;
+      battleWinLose = file.content.BattleResults.battleWinLose;
       teams = file.content.teams;
     } 
     // Handle legacy format with direct properties
     else {
       characterRecord = file.content.characterRecord;
       characterIdRecord = file.content.characterIdRecord;
+      battleWinLose = file.content.battleWinLose;
       teams = file.content.teams;
     }
     
     if (!characterRecord) return;
     
-    processCharacterRecord(characterRecord, characterIdRecord, teams, fileName);
+    processCharacterRecord(characterRecord, characterIdRecord, teams, fileName, battleWinLose);
   });
   
   // Calculate averages and format form history
@@ -1316,9 +1342,24 @@ function getAggregatedCharacterData(files, charMap, capsuleMap = {}, aiStrategie
     // Final combat performance score
     const combatPerformanceScore = baseScore * experienceMultiplier;
     
+    // Calculate win rate from matches array
+    const totalMatches = char.matches ? char.matches.length : char.matchCount;
+    const wins = char.matches ? char.matches.filter(m => m.won).length : 0;
+    const winRate = totalMatches > 0 ? Math.round((wins / totalMatches) * 1000) / 10 : 0;
+    
+    // Calculate speed impact win rate (wins / impacts * 100)
+    const speedImpactWinRate = char.totalSpeedImpacts > 0 
+      ? Math.round((char.totalSpeedImpactWins / char.totalSpeedImpacts) * 1000) / 10 
+      : 0;
+    
     return {
       ...char,
-      combatPerformanceScore: Math.round(combatPerformanceScore * 100) / 100
+      dps: Math.round(damagePerSecond * 10) / 10, // Add DPS field
+      efficiency: Math.round(damageEfficiency * 100) / 100, // Add efficiency field
+      hpRetention: Math.round(healthRetention * 1000) / 10, // Add HP retention % field
+      combatPerformanceScore: Math.round(combatPerformanceScore * 100) / 100,
+      winRate: winRate, // Add win rate % field
+      speedImpactWinRate: speedImpactWinRate // Add speed impact win rate % field
     };
   }).sort((a, b) => {
     // Primary sort: Combat performance score (descending)
