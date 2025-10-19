@@ -17,7 +17,7 @@ node wrapBattleResultsWithTeam.js D:/path/to/BattleResultFiles --teams="Tiny Ter
 
 Overwrite originals:
 
-node wrapBattleResultsWithTeam.js D:/path/to/BattleResultFiles --teams="Cinema,Cold Kingdom" --inplace
+node wrapBattleResultsWithTeam.js --teams="Cinema,Cold Kingdom" --inplace
 
 node "d:/DBZL/SZLeague/GitHub/SZMatchBuilder/apps/analyzer/AddTeamtoFiles/wrapBattleResultsWithTeam.js" --teams="Master and Student,No Team" --inplace
 

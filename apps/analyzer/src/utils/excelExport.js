@@ -540,7 +540,8 @@ function applyColumnFormatting(cell, column, rowValues, rowNumber, timeColumnAve
 
   // Percentage columns
   if (key.includes('Rate') || key.includes('Retention') || key.includes('hpRetention') || 
-      key === 'healthRetention' || key === 'speedImpactWinRate') {
+      key === 'healthRetention' || key === 'speedImpactWinRate' || key === 'primaryTeam') {
+    // Note: primaryTeam is mapped to winRate in Team Performance Matrix, so it needs percentage formatting
     cell.numFmt = '0.0"%"';
     cell.alignment = { horizontal: 'right' };
   }
@@ -710,8 +711,8 @@ function applyColumnFormatting(cell, column, rowValues, rowNumber, timeColumnAve
  * Calculate optimal column width based on header and content
  */
 function calculateColumnWidth(header, key) {
-  // Base width on header length with extra padding for filter icons
-  let width = Math.max(header.length + 5, 12); // Minimum 12, add 5 for filter icon
+  // Base width on header length with minimal padding
+  let width = Math.max(header.length + 2, 10); // Minimum 10, add 2 for padding
 
   // Special cases for known wide/narrow columns with increased widths
   const widthMap = {
@@ -808,7 +809,7 @@ function calculateColumnWidth(header, key) {
     'matchResult': 10  // Reduced from 12
   };
 
-  return widthMap[key] || Math.min(width + 3, 50); // Default: header + 3, max 50
+  return widthMap[key] || width; // Default: header + 2, no excessive max
 }
 
 /**
@@ -978,11 +979,53 @@ async function generateTeamPerformanceMatrix(workbook, data, includeFormatting) 
   
   // Add team name column at the start
   columns.unshift(teamNameColumn);
+  
+  // Replace "Primary Team" with "Win Rate" and update headers for team-level stats
+  const teamHeaderMapping = {
+    'primaryTeam': 'Win Rate',
+    'avgDamage': 'Damage',
+    'avgTaken': 'Taken',
+    'efficiency': 'Efficiency',
+    'dps': 'DPS',
+    'combatScore': 'Combat Score',
+    'avgHPGaugeValueMax': 'Max HP',
+    'avgHealth': 'HP Left',
+    'healthRetention': 'HP Retention %',
+    'avgGuards': 'Guards',
+    'avgRevengeCounters': 'Revenge Counters',
+    'avgSuperCounters': 'Super Counters',
+    'avgZCounters': 'Z-Counters',
+    'avgSPM1': 'Super 1',
+    'avgSPM2': 'Super 2',
+    'avgSkill1': 'Skill 1',
+    'avgSkill2': 'Skill 2',
+    'avgUltimates': 'Ultimates',
+    'avgEnergyBlasts': 'Ki Blasts',
+    'avgCharges': 'Charges',
+    'avgSparking': 'Sparkings',
+    'avgDragonDashMileage': 'Dragon Dash Mileage',
+    'avgThrows': 'Throws',
+    'avgLightningAttacks': 'Lightning',
+    'avgVanishingAttacks': 'Vanishing',
+    'avgDragonHoming': 'Dragon Homing',
+    'avgSpeedImpacts': 'Speed Impacts',
+    'damageCapsules': 'Damage Capsules',
+    'defensiveCapsules': 'Defense Capsules',
+    'utilityCapsules': 'Utility Capsules'
+  };
+  
+  // Store original headers for character rows, update for team display
+  columns.forEach(col => {
+    col.originalHeader = col.header;
+    if (teamHeaderMapping[col.key]) {
+      col.teamHeader = teamHeaderMapping[col.key];
+    }
+  });
 
   // Set column widths (including new team name column)
   columns.forEach((col, index) => {
     const column = sheet.getColumn(index + 1);
-    column.width = col.width || calculateColumnWidth(col.header, col.key);
+    column.width = col.width || calculateColumnWidth(col.teamHeader || col.header, col.key);
   });
 
   // Insert group header row at the top (Row 1)
@@ -1021,8 +1064,8 @@ async function generateTeamPerformanceMatrix(workbook, data, includeFormatting) 
     currentCol = endCol + 1;
   });
 
-  // Add column header row (Row 2)
-  const headerRow = sheet.addRow(columns.map(col => col.header));
+  // Add column header row (Row 2) - use team headers where available
+  const headerRow = sheet.addRow(columns.map(col => col.teamHeader || col.header));
 
   // Track merge ranges for team name cells
   const teamMergeRanges = [];
@@ -1034,6 +1077,40 @@ async function generateTeamPerformanceMatrix(workbook, data, includeFormatting) 
   teamGroups.forEach(team => {
     const teamStartRow = currentRow;
     
+    // Mapping for team aggregate fields to column keys
+    const teamFieldMapping = {
+      'primaryTeam': 'winRate', // Replace primaryTeam with winRate
+      'avgDamage': 'top5TotalDamage',
+      'avgTaken': 'top5TotalTaken',
+      'efficiency': 'top5Efficiency',
+      'dps': 'top5TotalDPS',
+      'combatScore': 'top5TotalCombatScore',
+      'avgHPGaugeValueMax': 'top5TotalMaxHP',
+      'avgHealth': 'top5TotalHPLeft',
+      'healthRetention': 'hpRetention',
+      'avgGuards': 'top5TotalGuards',
+      'avgRevengeCounters': 'top5TotalRevengeCounters',
+      'avgSuperCounters': 'top5TotalSuperCounters',
+      'avgZCounters': 'top5TotalZCounters',
+      'avgSPM1': 'top5TotalSuper1',
+      'avgSPM2': 'top5TotalSuper2',
+      'avgSkill1': 'top5TotalSkill1',
+      'avgSkill2': 'top5TotalSkill2',
+      'avgUltimates': 'top5TotalUltimates',
+      'avgEnergyBlasts': 'top5TotalKiBlasts',
+      'avgCharges': 'top5TotalCharges',
+      'avgSparking': 'top5TotalSparkings',
+      'avgDragonDashMileage': 'top5TotalDragonDashMileage',
+      'avgThrows': 'top5TotalThrows',
+      'avgLightningAttacks': 'top5TotalLightning',
+      'avgVanishingAttacks': 'top5TotalVanishing',
+      'avgDragonHoming': 'top5TotalDragonHoming',
+      'avgSpeedImpacts': 'top5TotalSpeedImpacts',
+      'damageCapsules': 'top5TotalDamageCapsules',
+      'defensiveCapsules': 'top5TotalDefenseCapsules',
+      'utilityCapsules': 'top5TotalUtilityCapsules'
+    };
+    
     // Add team summary row
     const teamRowValues = columns.map(col => {
       if (col.key === 'teamName') {
@@ -1041,7 +1118,9 @@ async function generateTeamPerformanceMatrix(workbook, data, includeFormatting) 
       } else if (col.key === 'name') {
         return ''; // Leave character name blank for team row
       } else {
-        const value = team.aggregates[col.key];
+        // Use mapped field name if available, otherwise use original key
+        const aggregateKey = teamFieldMapping[col.key] || col.key;
+        const value = team.aggregates[aggregateKey];
         return formatCellValue(value, col.key);
       }
     });
@@ -1054,6 +1133,20 @@ async function generateTeamPerformanceMatrix(workbook, data, includeFormatting) 
     teamRow._isTeamRow = true;
     teamRow._teamName = team.teamName;
     
+
+
+    // Identify top 5 character names, assign icon and record rank
+    const top5Icon = '⭐';
+    const top5RankMap = new Map(); // name -> 0-based rank
+    if (team.characters && team.characters.length > 0) {
+      const top5 = [...team.characters]
+        .sort((a, b) => (b.combatPerformanceScore || 0) - (a.combatPerformanceScore || 0))
+        .slice(0, 5);
+      top5.forEach((char, idx) => {
+        top5RankMap.set(char.name, idx); // 0..4
+      });
+    }
+
     // Add character rows under this team
     team.characters.forEach(character => {
       const charRowValues = columns.map(col => {
@@ -1062,19 +1155,30 @@ async function generateTeamPerformanceMatrix(workbook, data, includeFormatting) 
         } else if (col.key === 'name') {
           // Character name (second column)
           let value = typeof col.accessor === 'function' ? col.accessor(character) : character[col.key];
-          return value; // No indent since team name is in separate column
+          // Add colored emoji icon for top 5 (keep rank info on the row)
+          if (top5RankMap.has(character.name)) {
+            return top5Icon + ' ' + value;
+          }
+          return value;
+        } else if (col.key === 'primaryTeam') {
+          // For character rows, show winRate instead of primaryTeam
+          return formatCellValue(character.winRate, 'winRate');
         } else {
           let value = typeof col.accessor === 'function' ? col.accessor(character) : character[col.key];
           return formatCellValue(value, col.key);
         }
       });
-      
+
       const charRow = sheet.addRow(charRowValues);
       totalDataRows++;
       currentRow++;
-      
+
       charRow._isCharacterRow = true;
       charRow._parentTeam = team.teamName;
+      // Attach top5 rank if this character is in the top 5 for styling later
+      if (top5RankMap.has(character.name)) {
+        charRow._top5Rank = top5RankMap.get(character.name) + 1; // 1-based rank
+      }
     });
     
     // Store merge range for this team (first column, all rows for this team)
@@ -1197,14 +1301,14 @@ function applyTeamMatrixFormatting(sheet, columns, columnGroups, dataRowCount, t
           bottom: { style: 'medium', color: { argb: 'FF000000' } },
           right: { style: 'thin', color: { argb: 'FF000000' } }
         };
-      });      // Track rows for grouping
+      });      // Track rows for grouping - but don't group yet, wait until we see the team row
       if (currentTeam && rowsInCurrentTeam.length > 0) {
-        // Group previous team's character rows
+        // Group previous team's character rows under the team row
         const startRow = rowsInCurrentTeam[0];
         const endRow = rowsInCurrentTeam[rowsInCurrentTeam.length - 1];
-        if (endRow > startRow) {
-          sheet.getRow(startRow).outlineLevel = 1;
-          for (let r = startRow + 1; r <= endRow; r++) {
+        if (endRow >= startRow) {
+          // Set outline level for character rows (grouped under team row)
+          for (let r = startRow; r <= endRow; r++) {
             sheet.getRow(r).outlineLevel = 1;
           }
         }
@@ -1223,6 +1327,23 @@ function applyTeamMatrixFormatting(sheet, columns, columnGroups, dataRowCount, t
 
         // Apply column-specific formatting
         applyColumnFormatting(cell, column, row.values, rowNumber, timeColumnAverages);
+        
+        // Apply rich text formatting for character names with stars
+        if (column.key === 'name' && typeof cell.value === 'string' && cell.value.startsWith('⭐')) {
+          const starAndName = cell.value;
+          cell.value = {
+            richText: [
+              {
+                font: { color: { argb: '4BACC6' }, bold: true }, // Gold color for star
+                text: '⭐ '
+              },
+              {
+                font: { color: { argb: 'FF000000' }, bold: true }, // Black for name
+                text: starAndName.substring(2) // Remove "⭐ " prefix
+              }
+            ]
+          };
+        }
 
         // Alternating row colors (light gray for even rows)
         if (rowsInCurrentTeam.length % 2 === 0) {
@@ -1238,11 +1359,12 @@ function applyTeamMatrixFormatting(sheet, columns, columnGroups, dataRowCount, t
           }
         }
 
-        // Add black borders to character rows
+        // Add black borders to character rows; if this is the 5th top character, make bottom border thick
+        const isFifthTop = row._top5Rank === 5;
         cell.border = {
           top: { style: 'thin', color: { argb: 'FF000000' } },
           left: { style: 'thin', color: { argb: 'FF000000' } },
-          bottom: { style: 'thin', color: { argb: 'FF000000' } },
+          bottom: isFifthTop ? { style: 'thick', color: { argb: 'FF000000' } } : { style: 'thin', color: { argb: 'FF000000' } },
           right: { style: 'thin', color: { argb: 'FF000000' } }
         };
       });
@@ -1255,12 +1377,21 @@ function applyTeamMatrixFormatting(sheet, columns, columnGroups, dataRowCount, t
   if (rowsInCurrentTeam.length > 0) {
     const startRow = rowsInCurrentTeam[0];
     const endRow = rowsInCurrentTeam[rowsInCurrentTeam.length - 1];
-    if (endRow > startRow) {
+    if (endRow >= startRow) {
+      // Set outline level for character rows (grouped under team row)
       for (let r = startRow; r <= endRow; r++) {
         sheet.getRow(r).outlineLevel = 1;
       }
     }
   }
+  
+  // Set worksheet view properties to show grouping controls at top
+  sheet.properties.outlineLevelCol = 0;
+  sheet.properties.outlineLevelRow = 1;
+  if (!sheet.properties.outlineProperties) {
+    sheet.properties.outlineProperties = {};
+  }
+  sheet.properties.outlineProperties.summaryBelow = false; // Put controls at top
 
   // Merge team name cells (first column) for each team
   teamMergeRanges.forEach(mergeInfo => {
@@ -1408,38 +1539,8 @@ function applyTeamGroupConditionalFormatting(sheet, columns, teamGroups) {
 
 /**
  * Add auto-filter capability for each team group
- * Since Excel only supports one autofilter per sheet, we add a note to the first team
- * explaining how users can manually filter each team section
  */
 function addPerTeamAutoFilters(sheet, columns, teamGroups) {
   // Excel limitation: Only ONE autofilter allowed per sheet
-  // We can't have independent filters for each team
-  
-  // OPTION 1: Add a single filter that covers all data (but this breaks team grouping)
-  // OPTION 2: Use Excel Tables for each team (complex, may break formatting)
-  // OPTION 3: Add instructions via cell comments for manual filtering
-  
-  // For now, we'll skip the global filter entirely and add a comment
-  // to the first team row explaining how to use Sort & Filter
-  
-  if (teamGroups.length > 0) {
-    const firstTeamRow = sheet.getRow(3); // First team row
-    const nameCell = firstTeamRow.getCell(1);
-    
-    // Add comment/note explaining filtering
-    nameCell.note = {
-      texts: [{
-        font: { size: 10, bold: false, name: 'Calibri' },
-        text: 'Per-Team Filtering:\n\n' +
-              '1. Select a team section (team row + character rows)\n' +
-              '2. Go to Data > Filter to enable filtering for that section\n' +
-              '3. Use filter dropdowns to sort/filter characters within the team\n\n' +
-              'Note: Excel only allows one filter at a time, so you\'ll need to ' +
-              'enable/disable filters as you work with different teams.'
-      }]
-    };
-  }
-  
-  // Alternative: Don't add any filters, let users manually apply them
-  // This is cleaner and doesn't interfere with the team grouping structure
+  // Users can manually apply filters as needed by selecting data and using Data > Filter
 }

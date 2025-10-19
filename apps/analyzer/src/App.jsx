@@ -1316,12 +1316,18 @@ function getAggregatedCharacterData(files, charMap, capsuleMap = {}, aiStrategie
     // Final combat performance score
     const combatPerformanceScore = baseScore * experienceMultiplier;
     
+    // Calculate win rate from matches array
+    const totalMatches = char.matches ? char.matches.length : char.matchCount;
+    const wins = char.matches ? char.matches.filter(m => m.won).length : 0;
+    const winRate = totalMatches > 0 ? Math.round((wins / totalMatches) * 1000) / 10 : 0;
+    
     return {
       ...char,
       dps: Math.round(damagePerSecond * 10) / 10, // Add DPS field
       efficiency: Math.round(damageEfficiency * 100) / 100, // Add efficiency field
       hpRetention: Math.round(healthRetention * 1000) / 10, // Add HP retention % field
-      combatPerformanceScore: Math.round(combatPerformanceScore * 100) / 100
+      combatPerformanceScore: Math.round(combatPerformanceScore * 100) / 100,
+      winRate: winRate // Add win rate % field
     };
   }).sort((a, b) => {
     // Primary sort: Combat performance score (descending)

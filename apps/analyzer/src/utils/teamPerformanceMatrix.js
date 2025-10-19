@@ -43,6 +43,7 @@ export function processTeamGroups(characterData) {
 
 /**
  * Calculate aggregate statistics at the team level
+ * Uses top 5 characters (by combat score) for most stats
  * @param {Object} team - Team object with characters array
  */
 function calculateTeamAggregates(team) {
@@ -51,66 +52,100 @@ function calculateTeamAggregates(team) {
   
   if (characters.length === 0 || totalMatches === 0) return;
   
+  // Sort characters by combat performance score (descending) and get top 5
+  const top5Characters = [...characters]
+    .sort((a, b) => (b.combatPerformanceScore || 0) - (a.combatPerformanceScore || 0))
+    .slice(0, 5);
+  
+  // Calculate team win rate and match count based on unique matches (not per character)
+  // Group matches by fileName to get unique team matches
+  const uniqueMatches = new Map();
+  characters.forEach(char => {
+    if (char.matches && Array.isArray(char.matches)) {
+      char.matches.forEach(match => {
+        if (match.fileName && match.team === team.teamName) {
+          // Use fileName as unique match identifier
+          if (!uniqueMatches.has(match.fileName)) {
+            uniqueMatches.set(match.fileName, match.won);
+          }
+        }
+      });
+    }
+  });
+  
+  const totalUniqueMatches = uniqueMatches.size;
+  const teamWins = Array.from(uniqueMatches.values()).filter(won => won).length;
+  const winRate = totalUniqueMatches > 0 ? (teamWins / totalUniqueMatches) * 100 : 0;
+  
+  // Calculate top 5 HP totals first (needed for HP retention)
+  const top5TotalMaxHP = sumTop5(top5Characters, 'avgHPGaugeValueMax');
+  const top5TotalHPLeft = sumTop5(top5Characters, 'avgHealth');
+  
+  // Calculate HP Retention % for team: (HP Left / Max HP) * 100
+  const hpRetention = top5TotalMaxHP > 0 ? Math.round((top5TotalHPLeft / top5TotalMaxHP) * 1000) / 10 : 0;
+  
   // Initialize aggregates
   team.aggregates = {
-    matchCount: totalMatches,
+    matchCount: totalUniqueMatches, // Use unique match count, not sum of character matches
+    winRate: Math.round(winRate * 10) / 10, // Win rate as percentage with 1 decimal
     
-    // Combat Performance - weighted averages
-    avgDamage: weightedAverage(characters, 'avgDamage', 'matchCount'),
-    avgTaken: weightedAverage(characters, 'avgTaken', 'matchCount'),
-    efficiency: 0, // Calculated after avgDamage and avgTaken
-    dps: weightedAverage(characters, 'dps', 'matchCount'),
-    combatScore: weightedAverage(characters, 'combatPerformanceScore', 'matchCount'), // Fixed: use correct field name
-    avgBattleTime: weightedAverage(characters, 'avgBattleTime', 'matchCount'),
+    // Combat Performance - TOP 5 TOTALS (not averages)
+    top5TotalDamage: sumTop5(top5Characters, 'avgDamage'),
+    top5TotalTaken: sumTop5(top5Characters, 'avgTaken'),
+    top5Efficiency: 0, // Calculated after damage totals
+    top5TotalDPS: weightedAverageTop5(top5Characters, 'dps', 'matchCount'),
+    top5TotalCombatScore: sum(top5Characters, 'combatPerformanceScore'),
+    avgBattleTime: weightedAverageTop5(top5Characters, 'avgBattleTime', 'matchCount'),
     totalKills: sum(characters, 'totalKills'),
-    avgKills: weightedAverage(characters, 'avgKills', 'matchCount'),
+    avgKills: weightedAverageTop5(top5Characters, 'avgKills', 'matchCount'),
     
-    // Survival & Health - weighted averages
-    avgHealth: weightedAverage(characters, 'avgHealth', 'matchCount'),
-    avgHPGaugeValueMax: weightedAverage(characters, 'avgHPGaugeValueMax', 'matchCount'),
-    hpRetention: weightedAverage(characters, 'hpRetention', 'matchCount'),
-    avgGuards: weightedAverage(characters, 'avgGuards', 'matchCount'),
-    avgRevengeCounters: weightedAverage(characters, 'avgRevengeCounters', 'matchCount'),
-    avgSuperCounters: weightedAverage(characters, 'avgSuperCounters', 'matchCount'),
-    avgZCounters: weightedAverage(characters, 'avgZCounters', 'matchCount'),
+    // Survival & Health - TOP 5 TOTALS
+    top5TotalMaxHP: top5TotalMaxHP,
+    top5TotalHPLeft: top5TotalHPLeft,
+    hpRetention: hpRetention,
+    survivalRate: '-', // Survival rate is not relevant for teams
+    top5TotalGuards: sumTop5(top5Characters, 'avgGuards'),
+    top5TotalRevengeCounters: sumTop5(top5Characters, 'avgRevengeCounters'),
+    top5TotalSuperCounters: sumTop5(top5Characters, 'avgSuperCounters'),
+    top5TotalZCounters: sumTop5(top5Characters, 'avgZCounters'),
     
-    // Special Abilities - weighted averages
-    avgSPM1: weightedAverage(characters, 'avgSPM1', 'matchCount'),
-    avgSPM2: weightedAverage(characters, 'avgSPM2', 'matchCount'),
-    avgSkill1: weightedAverage(characters, 'avgSkill1', 'matchCount'),
-    avgSkill2: weightedAverage(characters, 'avgSkill2', 'matchCount'),
-    avgUltimates: weightedAverage(characters, 'avgUltimates', 'matchCount'),
-    avgEnergyBlasts: weightedAverage(characters, 'avgEnergyBlasts', 'matchCount'),
-    avgCharges: weightedAverage(characters, 'avgCharges', 'matchCount'),
-    avgSparking: weightedAverage(characters, 'avgSparking', 'matchCount'),
-    avgDragonDashMileage: weightedAverage(characters, 'avgDragonDashMileage', 'matchCount'),
+    // Special Abilities - TOP 5 TOTALS
+    top5TotalSuper1: sumTop5(top5Characters, 'avgSPM1'),
+    top5TotalSuper2: sumTop5(top5Characters, 'avgSPM2'),
+    top5TotalSkill1: sumTop5(top5Characters, 'avgEXA1'),
+    top5TotalSkill2: sumTop5(top5Characters, 'avgEXA2'),
+    top5TotalUltimates: sumTop5(top5Characters, 'avgUltimates'),
+    top5TotalKiBlasts: sumTop5(top5Characters, 'avgEnergyBlasts'),
+    top5TotalCharges: sumTop5(top5Characters, 'avgCharges'),
+    top5TotalSparkings: sumTop5(top5Characters, 'avgSparking'),
+    top5TotalDragonDashMileage: sumTop5(top5Characters, 'avgDragonDashMileage'),
     
-    // Combat Mechanics - weighted averages
-    avgMaxCombo: weightedAverage(characters, 'avgMaxCombo', 'matchCount'),
-    avgMaxComboDamage: weightedAverage(characters, 'avgMaxComboDamage', 'matchCount'),
-    avgThrows: weightedAverage(characters, 'avgThrows', 'matchCount'),
-    avgLightningAttacks: weightedAverage(characters, 'avgLightningAttacks', 'matchCount'),
-    avgVanishingAttacks: weightedAverage(characters, 'avgVanishingAttacks', 'matchCount'),
-    avgDragonHoming: weightedAverage(characters, 'avgDragonHoming', 'matchCount'),
-    avgSpeedImpacts: weightedAverage(characters, 'avgSpeedImpacts', 'matchCount'),
-    speedImpactWinRate: weightedAverage(characters, 'speedImpactWinRate', 'matchCount'),
-    avgSparkingCombo: weightedAverage(characters, 'avgSparkingCombo', 'matchCount'),
+    // Combat Mechanics - TOP 5 AVERAGES
+    avgMaxCombo: weightedAverageTop5(top5Characters, 'avgMaxCombo', 'matchCount'),
+    avgMaxComboDamage: weightedAverageTop5(top5Characters, 'avgMaxComboDamage', 'matchCount'),
+    top5TotalThrows: sumTop5(top5Characters, 'avgThrows'),
+    top5TotalLightning: sumTop5(top5Characters, 'avgLightningAttacks'),
+    top5TotalVanishing: sumTop5(top5Characters, 'avgVanishingAttacks'),
+    top5TotalDragonHoming: sumTop5(top5Characters, 'avgDragonHoming'),
+    top5TotalSpeedImpacts: sumTop5(top5Characters, 'avgSpeedImpacts'),
+    speedImpactWinRate: weightedAverageTop5(top5Characters, 'speedImpactWinRate', 'matchCount'),
+    avgSparkingCombo: weightedAverageTop5(top5Characters, 'avgSparkingCombo', 'matchCount'),
     
-    // Build & Equipment - most common values
-    buildArchetype: getMostCommon(characters, 'buildArchetype'),
-    damageCapsules: weightedAverage(characters, 'damageCapsules', 'matchCount'),
-    defensiveCapsules: weightedAverage(characters, 'defensiveCapsules', 'matchCount'),
-    utilityCapsules: weightedAverage(characters, 'utilityCapsules', 'matchCount'),
-    topCapsules: combineMostCommon(characters, 'topCapsules'),
+    // Build & Equipment - TOP 5 TOTALS and most common from top 5
+    buildArchetype: getMostCommon(top5Characters, 'buildArchetype'),
+    top5TotalDamageCapsules: sumTop5(top5Characters, 'avgDamageCaps'),
+    top5TotalDefenseCapsules: sumTop5(top5Characters, 'avgDefensiveCaps'),
+    top5TotalUtilityCapsules: sumTop5(top5Characters, 'avgUtilityCaps'),
+    topCapsules: combineMostCommon(top5Characters, 'topCapsules'),
     
-    // Form Changes - aggregate values
-    hasMultipleForms: characters.some(c => c.hasMultipleForms === 'Yes') ? 'Yes' : 'No',
-    formHistory: combineFormHistory(characters)
+    // Form Changes - aggregate values from top 5
+    hasMultipleForms: top5Characters.some(c => c.hasMultipleForms === 'Yes') ? 'Yes' : 'No',
+    formHistory: combineFormHistory(top5Characters)
   };
   
-  // Calculate efficiency from aggregated damage
-  if (team.aggregates.avgTaken > 0) {
-    team.aggregates.efficiency = team.aggregates.avgDamage / team.aggregates.avgTaken;
+  // Calculate efficiency from top 5 damage totals
+  if (team.aggregates.top5TotalTaken > 0) {
+    team.aggregates.top5Efficiency = team.aggregates.top5TotalDamage / team.aggregates.top5TotalTaken;
   }
 }
 
@@ -132,6 +167,42 @@ function weightedAverage(characters, field, weightField) {
   });
   
   return totalWeight > 0 ? weightedSum / totalWeight : 0;
+}
+
+/**
+ * Calculate weighted average for top 5 characters only
+ */
+function weightedAverageTop5(top5Characters, field, weightField) {
+  let totalWeight = 0;
+  let weightedSum = 0;
+  
+  top5Characters.forEach(char => {
+    const value = char[field];
+    const weight = char[weightField] || 0;
+    
+    if (typeof value === 'number' && !isNaN(value) && weight > 0) {
+      weightedSum += value * weight;
+      totalWeight += weight;
+    }
+  });
+  
+  return totalWeight > 0 ? weightedSum / totalWeight : 0;
+}
+
+/**
+ * Calculate sum of top 5 characters' stats (weighted by match count for averages)
+ * For per-match averages, multiply by match count to get totals
+ */
+function sumTop5(top5Characters, field) {
+  // Sum just the averages for the top 5
+  let total = 0;
+  top5Characters.forEach(char => {
+    const value = char[field];
+    if (typeof value === 'number' && !isNaN(value)) {
+      total += value;
+    }
+  });
+  return Math.round(total * 10) / 10;
 }
 
 /**
