@@ -348,10 +348,11 @@ function applyCharacterAveragesFormatting(sheet, columns, columnGroups, dataRowC
   applyConditionalFormattingToColumns(sheet, columns, 'Special Abilities', lastDataRow);
   applyConditionalFormattingToColumns(sheet, columns, 'Combat Mechanics', lastDataRow);
   
-  // Add auto-filter to header row (row 2) - provides filter dropdowns
+  // Add auto-filter to header row (row 2) spanning all data rows
+  // Google Sheets requires the filter to cover all data rows, not just the header
   sheet.autoFilter = {
     from: { row: 2, column: 1 },
-    to: { row: 2, column: columns.length }
+    to: { row: lastDataRow, column: columns.length }
   };
 }
 
@@ -439,10 +440,11 @@ function applyMatchDetailsFormatting(sheet, columns, columnGroups, dataRowCount)
   applyConditionalFormattingToColumns(sheet, columns, 'Special Abilities', lastDataRow);
   applyConditionalFormattingToColumns(sheet, columns, 'Combat Mechanics', lastDataRow);
   
-  // Add auto-filter to header row (row 2) - provides filter dropdowns
+  // Add auto-filter to header row (row 2) spanning all data rows
+  // Google Sheets requires the filter to cover all data rows, not just the header
   sheet.autoFilter = {
     from: { row: 2, column: 1 },
-    to: { row: 2, column: columns.length }
+    to: { row: lastDataRow, column: columns.length }
   };
 }
 
@@ -1431,8 +1433,8 @@ function applyTeamMatrixFormatting(sheet, columns, columnGroups, dataRowCount, t
   // Apply conditional formatting per team group (compare characters within their own teams)
   applyTeamGroupConditionalFormatting(sheet, columns, teamGroups);
   
-  // Add per-team auto-filters instead of global header filter
-  addPerTeamAutoFilters(sheet, columns, teamGroups);
+  // Note: Auto-filter intentionally NOT applied to Team Performance Matrix
+  // The hierarchical structure (team rows + grouped character rows) doesn't work well with filtering
   
   // Style unused area: Make gridlines/unused cells blend with Excel's default gray background
   // Set sheet properties to hide gridlines (cleaner look)
@@ -1545,9 +1547,7 @@ function applyTeamGroupConditionalFormatting(sheet, columns, teamGroups) {
 }
 
 /**
- * Add auto-filter capability for each team group
+ * Removed: Auto-filter not needed for Team Performance Matrix
+ * The hierarchical structure with team summary rows and grouped character rows
+ * doesn't work well with standard column filtering
  */
-function addPerTeamAutoFilters(sheet, columns, teamGroups) {
-  // Excel limitation: Only ONE autofilter allowed per sheet
-  // Users can manually apply filters as needed by selecting data and using Data > Filter
-}
