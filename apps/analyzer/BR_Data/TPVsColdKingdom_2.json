@@ -1,9 +1,6 @@
 {
   "TeamBattleResults": {
-    "teams": [
-      "Time Patrol",
-      "Cold Kingdom"
-    ],
+    "teams": ["Time Patrol", "Cold Kingdom"],
     "battleResult": {
       "battleWinLose": "Win",
       "battleSettlementIndex": 0,

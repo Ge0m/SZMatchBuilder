@@ -1,9 +1,6 @@
 {
   "TeamBattleResults": {
-    "teams": [
-      "Tiny Terrors",
-      "Z-Fighters"
-    ],
+    "teams": ["Tiny Terrors", "Z-Fighters"],
     "battleResult": {
       "battleWinLose": "Win",
       "battleSettlementIndex": 0,

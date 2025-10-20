@@ -1,9 +1,6 @@
 {
   "TeamBattleResults": {
-    "teams": [
-      "Budokai",
-      "Cinema"
-    ],
+    "teams": ["Budokai", "Cinema"],
     "BattleResults": {
       "battleWinLose": "Lose",
       "battleSettlementIndex": 0,

@@ -1,9 +1,6 @@
 {
   "TeamBattleResults": {
-    "teams": [
-      "Master and Student",
-      ""
-    ],
+    "teams": ["Master and Student", ""],
     "BattleResults": {
       "battleWinLose": "Lose",
       "battleSettlementIndex": 0,
@@ -492,11 +489,7 @@
             "originalCharacter": {
               "key": "0030_00"
             },
-            "changedStates": [
-              "CostumeDamaged",
-              "Damage",
-              "KnockDown"
-            ],
+            "changedStates": ["CostumeDamaged", "Damage", "KnockDown"],
             "preChangedStates": []
           },
           "battleCount": {

@@ -1,9 +1,6 @@
 {
   "TeamBattleResults": {
-    "teams": [
-      "Budokai",
-      "Cinema"
-    ],
+    "teams": ["Budokai", "Cinema"],
     "BattleResults": {
       "battleWinLose": "Win",
       "battleSettlementIndex": 0,
@@ -490,11 +487,7 @@
             "originalCharacter": {
               "key": "0881_00"
             },
-            "changedStates": [
-              "CostumeDamaged",
-              "NoHit_Combatives",
-              "Damage"
-            ],
+            "changedStates": ["CostumeDamaged", "NoHit_Combatives", "Damage"],
             "preChangedStates": []
           },
           "battleCount": {

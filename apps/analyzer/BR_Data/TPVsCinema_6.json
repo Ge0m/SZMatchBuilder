@@ -1,9 +1,6 @@
 {
   "TeamBattleResults": {
-    "teams": [
-      "Time Patrol",
-      "Cinema"
-    ],
+    "teams": ["Time Patrol", "Cinema"],
     "battleResult": {
       "battleWinLose": "Lose",
       "battleSettlementIndex": 0,

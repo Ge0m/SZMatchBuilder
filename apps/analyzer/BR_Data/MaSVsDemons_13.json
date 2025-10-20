@@ -1,9 +1,6 @@
 {
   "TeamBattleResults": {
-    "teams": [
-      "Master and Student",
-      "Demons"
-    ],
+    "teams": ["Master and Student", "Demons"],
     "BattleResults": {
       "battleWinLose": "Lose",
       "battleSettlementIndex": 0,
@@ -1680,10 +1677,7 @@
             "originalCharacter": {
               "key": "0170_00"
             },
-            "changedStates": [
-              "NoHit_BlastImpactTrigger",
-              "Damage"
-            ],
+            "changedStates": ["NoHit_BlastImpactTrigger", "Damage"],
             "preChangedStates": []
           },
           "battleCount": {

@@ -1,9 +1,6 @@
 {
   "TeamBattleResults": {
-    "teams": [
-      "Master and Student",
-      ""
-    ],
+    "teams": ["Master and Student", ""],
     "BattleResults": {
       "battleWinLose": "Win",
       "battleSettlementIndex": 0,
