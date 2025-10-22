@@ -386,9 +386,8 @@ export default function BRDataSelector({ onSelect }) {
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
           onKeyDown={(e) => {
-            // Detect Ctrl+A (Windows/Linux) or Meta+A (Mac)
-            const isSelectAll = (e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'a';
-            if (isSelectAll) {
+            // Use Enter to select all visible matches when focused on the search box
+            if (e.key === 'Enter') {
               e.preventDefault();
               selectAllVisibleMatches();
             }
@@ -435,7 +434,7 @@ export default function BRDataSelector({ onSelect }) {
       </div>
       {/* Shortcut hint */}
       <Box sx={{ fontSize: '0.75rem', color: '#ffffff8c', marginTop: '-6px' }}>
-        Tip: Press <strong>Ctrl/Cmd + A</strong> to select all visible matches while searching
+        Tip: Press <strong>Enter</strong> to select all visible matches while searching
       </Box>
 
       {/* Selection Summary and Actions */}
