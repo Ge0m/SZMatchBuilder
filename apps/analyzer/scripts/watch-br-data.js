@@ -13,7 +13,7 @@ function startWatcher() {
   console.log('👀 Starting file watcher for BR_Data directory...');
   console.log(`📁 Watching: ${BR_DATA_DIR}`);
   
-  const watcher = chokidar.watch(path.join(BR_DATA_DIR, '*.json'), {
+  const watcher = chokidar.watch(path.join(BR_DATA_DIR, '**', '*.json'), {
     ignored: /[\/\\]\./,
     persistent: true,
     ignoreInitial: false // Process existing files on startup
