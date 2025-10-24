@@ -40,6 +40,7 @@ const ExportManager = ({
         return Object.values(data).map(char => ({
           'Character Name': char.name,
           'Matches Played': char.matchCount,
+          'Active Matches': char.activeMatchCount || 0,
           'Win Rate': `${char.winRate}%`,
           'Total Damage': char.totalDamage?.toLocaleString() || 0,
           'Average Damage': char.avgDamage?.toLocaleString() || 0,

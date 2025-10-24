@@ -623,6 +623,8 @@ function getPositionBasedData(files, charMap, capsuleMap = {}) {
         positionStats[position].characters[characterName] = {
           name: characterName,
           matchCount: 0,
+          // activeMatchCount counts matches where battleTime > 0
+          activeMatchCount: 0,
           totalDamage: 0,
           totalTaken: 0,
           totalHealth: 0,
@@ -640,11 +642,16 @@ function getPositionBasedData(files, charMap, capsuleMap = {}) {
       }
       
       const charData = positionStats[position].characters[characterName];
+      // Always increment visible match count
       charData.matchCount++;
+      // Only count as an "active" match if battleTime > 0
+      if (stats.battleTime && stats.battleTime > 0) {
+        charData.activeMatchCount += 1;
+        charData.totalBattleTime += stats.battleTime;
+      }
       charData.totalDamage += stats.damageDone;
       charData.totalTaken += stats.damageTaken;
       charData.totalHealth += stats.hPGaugeValue;
-      charData.totalBattleTime += stats.battleTime;
       charData.totalSpecialMoves += stats.specialMovesUsed;
       charData.totalUltimates += stats.ultimatesUsed;
       charData.totalSkills += stats.skillsUsed;
@@ -711,7 +718,10 @@ function getPositionBasedData(files, charMap, capsuleMap = {}) {
       charData.totalDamage += stats.damageDone;
       charData.totalTaken += stats.damageTaken;
       charData.totalHealth += stats.hPGaugeValue;
-      charData.totalBattleTime += stats.battleTime;
+      // Only include battleTime in totals if it's > 0. This keeps averages consistent when excluding zero-duration matches.
+      if (stats.battleTime && stats.battleTime > 0) {
+        charData.totalBattleTime += stats.battleTime;
+      }
       charData.totalSpecialMoves += stats.specialMovesUsed;
       charData.totalUltimates += stats.ultimatesUsed;
       charData.totalSkills += stats.skillsUsed;
@@ -779,23 +789,27 @@ function getPositionBasedData(files, charMap, capsuleMap = {}) {
   Object.keys(positionStats).forEach(position => {
     const posData = positionStats[position];
     posData.sortedCharacters = Object.values(posData.characters)
-      .map(char => ({
-        ...char,
-        avgDamage: char.totalDamage / char.matchCount,
-        avgTaken: char.totalTaken / char.matchCount,
-        avgHealth: char.totalHealth / char.matchCount,
-        avgBattleTime: char.totalBattleTime / char.matchCount,
-        avgSpecialMoves: char.totalSpecialMoves / char.matchCount,
-        avgUltimates: char.totalUltimates / char.matchCount,
-        avgSkills: char.totalSkills / char.matchCount,
-        avgSparking: char.totalSparking / char.matchCount,
-        avgCharges: char.totalCharges / char.matchCount,
-        avgGuards: char.totalGuards / char.matchCount,
-        avgEnergyBlasts: char.totalEnergyBlasts / char.matchCount,
-        avgComboNum: char.totalComboNum / char.matchCount,
-        avgComboDamage: char.totalComboDamage / char.matchCount,
-        damageEfficiency: char.totalDamage / Math.max(char.totalTaken, 1)
-      }))
+      .map(char => {
+        // Use activeMatchCount if available (exclude zero battleTime matches), fallback to matchCount
+        const denom = (char.activeMatchCount && char.activeMatchCount > 0) ? char.activeMatchCount : char.matchCount || 1;
+        return ({
+          ...char,
+          avgDamage: char.totalDamage / denom,
+          avgTaken: char.totalTaken / denom,
+          avgHealth: char.totalHealth / denom,
+          avgBattleTime: char.totalBattleTime / denom,
+          avgSpecialMoves: char.totalSpecialMoves / denom,
+          avgUltimates: char.totalUltimates / denom,
+          avgSkills: char.totalSkills / denom,
+          avgSparking: char.totalSparking / denom,
+          avgCharges: char.totalCharges / denom,
+          avgGuards: char.totalGuards / denom,
+          avgEnergyBlasts: char.totalEnergyBlasts / denom,
+          avgComboNum: char.totalComboNum / denom,
+          avgComboDamage: char.totalComboDamage / denom,
+          damageEfficiency: char.totalTaken > 0 ? (char.totalDamage / char.totalTaken) : char.totalDamage
+        });
+      })
       .sort((a, b) => b.avgDamage - a.avgDamage);
   });
   
@@ -881,6 +895,8 @@ function getAggregatedCharacterData(files, charMap, capsuleMap = {}, aiStrategie
           totalSpeedImpactWins: 0,
           totalSparkingCombo: 0,
           matchCount: 0,
+          // activeMatchCount excludes matches with zero battleTime
+          activeMatchCount: 0,
           // Build & Equipment tracking
           totalCapsuleCost: 0,
           totalDamageCaps: 0,
@@ -943,6 +959,9 @@ function getAggregatedCharacterData(files, charMap, capsuleMap = {}, aiStrategie
       charData.totalSpeedImpactWins += stats.speedImpactWins;
       charData.totalSparkingCombo += stats.sparkingComboCount;
       charData.matchCount += 1;
+      if (stats.battleTime && stats.battleTime > 0) {
+        charData.activeMatchCount += 1;
+      }
       
       // Build & Equipment tracking
       charData.totalCapsuleCost += stats.totalCapsuleCost || 0;
@@ -1211,45 +1230,45 @@ function getAggregatedCharacterData(files, charMap, capsuleMap = {}, aiStrategie
       aiStrategiesUsed: aiStrategiesArray,
       primaryTeam,
       primaryAIStrategy,
-      avgDamage: Math.round(char.totalDamage / char.matchCount),
-      avgTaken: Math.round(char.totalTaken / char.matchCount),
-      avgHealth: Math.round(char.totalHealth / char.matchCount),
-      avgBattleTime: Math.round((char.totalBattleTime / char.matchCount) * 10) / 10,
-      avgHPGaugeValueMax: Math.round(char.totalHPGaugeValueMax / char.matchCount),
-      avgSpecial: Math.round((char.totalSpecial / char.matchCount) * 10) / 10,
-      avgUltimates: Math.round((char.totalUltimates / char.matchCount) * 10) / 10,
-      avgSkills: Math.round((char.totalSkills / char.matchCount) * 10) / 10,
-      avgKills: Math.round((char.totalKills / char.matchCount) * 10) / 10,
+      // Use activeMatchCount (non-zero battleTime) for all averages when available
+      _activeMatches: char.activeMatchCount || 0,
+      avgDamage: Math.round(char.totalDamage / (char.activeMatchCount > 0 ? char.activeMatchCount : char.matchCount)),
+      avgTaken: Math.round(char.totalTaken / (char.activeMatchCount > 0 ? char.activeMatchCount : char.matchCount)),
+      avgHealth: Math.round(char.totalHealth / (char.activeMatchCount > 0 ? char.activeMatchCount : char.matchCount)),
+      avgBattleTime: Math.round((char.totalBattleTime / (char.activeMatchCount > 0 ? char.activeMatchCount : char.matchCount)) * 10) / 10,
+      avgHPGaugeValueMax: Math.round(char.totalHPGaugeValueMax / (char.activeMatchCount > 0 ? char.activeMatchCount : char.matchCount)),
+  avgSpecial: Math.round((char.totalSpecial / (char.activeMatchCount > 0 ? char.activeMatchCount : char.matchCount)) * 10) / 10,
+      avgSkills: Math.round((char.totalSkills / (char.activeMatchCount > 0 ? char.activeMatchCount : char.matchCount)) * 10) / 10,
+      avgKills: Math.round((char.totalKills / (char.activeMatchCount > 0 ? char.activeMatchCount : char.matchCount)) * 10) / 10,
       // Survival & Health averages
-      survivalRate: Math.round((char.survivalCount / char.matchCount) * 1000) / 10, // % of matches survived
-      avgSparking: Math.round((char.totalSparking / char.matchCount) * 10) / 10,
-      avgCharges: Math.round((char.totalCharges / char.matchCount) * 10) / 10,
-      avgGuards: Math.round((char.totalGuards / char.matchCount) * 10) / 10,
-      avgEnergyBlasts: Math.round((char.totalEnergyBlasts / char.matchCount) * 10) / 10,
-      avgZCounters: Math.round((char.totalZCounters / char.matchCount) * 10) / 10,
-      avgSuperCounters: Math.round((char.totalSuperCounters / char.matchCount) * 10) / 10,
-      avgRevengeCounters: Math.round((char.totalRevengeCounters / char.matchCount) * 10) / 10,
+      survivalRate: Math.round((char.survivalCount / (char.activeMatchCount > 0 ? char.activeMatchCount : char.matchCount)) * 1000) / 10, // % of matches survived
+      avgSparking: Math.round((char.totalSparking / (char.activeMatchCount > 0 ? char.activeMatchCount : char.matchCount)) * 10) / 10,
+      avgCharges: Math.round((char.totalCharges / (char.activeMatchCount > 0 ? char.activeMatchCount : char.matchCount)) * 10) / 10,
+      avgGuards: Math.round((char.totalGuards / (char.activeMatchCount > 0 ? char.activeMatchCount : char.matchCount)) * 10) / 10,
+      avgEnergyBlasts: Math.round((char.totalEnergyBlasts / (char.activeMatchCount > 0 ? char.activeMatchCount : char.matchCount)) * 10) / 10,
+      avgZCounters: Math.round((char.totalZCounters / (char.activeMatchCount > 0 ? char.activeMatchCount : char.matchCount)) * 10) / 10,
+      avgSuperCounters: Math.round((char.totalSuperCounters / (char.activeMatchCount > 0 ? char.activeMatchCount : char.matchCount)) * 10) / 10,
+      avgRevengeCounters: Math.round((char.totalRevengeCounters / (char.activeMatchCount > 0 ? char.activeMatchCount : char.matchCount)) * 10) / 10,
       // Special Abilities - detailed blast averages
-      avgSPM1: Math.round((char.totalSPM1 / char.matchCount) * 10) / 10,
-      avgSPM2: Math.round((char.totalSPM2 / char.matchCount) * 10) / 10,
-      avgEXA1: Math.round((char.totalEXA1 / char.matchCount) * 10) / 10,
-      avgEXA2: Math.round((char.totalEXA2 / char.matchCount) * 10) / 10,
-      avgDragonDashMileage: Math.round((char.totalDragonDashMileage / char.matchCount) * 10) / 10,
-      // Combat Performance averages
-      avgMaxCombo: Math.round((char.maxComboNumTotal / char.matchCount) * 10) / 10,
-      avgMaxComboDamage: Math.round(char.maxComboDamageTotal / char.matchCount),
-      avgThrows: Math.round((char.totalThrows / char.matchCount) * 10) / 10,
-      avgLightningAttacks: Math.round((char.totalLightningAttacks / char.matchCount) * 10) / 10,
-      avgVanishingAttacks: Math.round((char.totalVanishingAttacks / char.matchCount) * 10) / 10,
-      avgDragonHoming: Math.round((char.totalDragonHoming / char.matchCount) * 10) / 10,
-      avgSpeedImpacts: Math.round((char.totalSpeedImpacts / char.matchCount) * 10) / 10,
-      avgSpeedImpactWins: Math.round((char.totalSpeedImpactWins / char.matchCount) * 10) / 10,
-      avgSparkingCombo: Math.round((char.totalSparkingCombo / char.matchCount) * 10) / 10,
-      // Build & Equipment averages
-      avgCapsuleCost: Math.round(char.totalCapsuleCost / char.matchCount),
-      avgDamageCaps: Math.round((char.totalDamageCaps / char.matchCount) * 10) / 10,
-      avgDefensiveCaps: Math.round((char.totalDefensiveCaps / char.matchCount) * 10) / 10,
-      avgUtilityCaps: Math.round((char.totalUtilityCaps / char.matchCount) * 10) / 10,
+    avgSPM1: Math.round((char.totalSPM1 / (char.activeMatchCount > 0 ? char.activeMatchCount : char.matchCount)) * 10) / 10,
+  avgSPM2: Math.round((char.totalSPM2 / (char.activeMatchCount > 0 ? char.activeMatchCount : char.matchCount)) * 10) / 10,
+  avgEXA1: Math.round((char.totalEXA1 / (char.activeMatchCount > 0 ? char.activeMatchCount : char.matchCount)) * 10) / 10,
+  avgEXA2: Math.round((char.totalEXA2 / (char.activeMatchCount > 0 ? char.activeMatchCount : char.matchCount)) * 10) / 10,
+  avgUltimates: Math.round((char.totalUltimates / (char.activeMatchCount > 0 ? char.activeMatchCount : char.matchCount)) * 10) / 10,
+  avgDragonDashMileage: Math.round((char.totalDragonDashMileage / (char.activeMatchCount > 0 ? char.activeMatchCount : char.matchCount)) * 10) / 10,
+  avgMaxComboDamage: Math.round(char.maxComboDamageTotal / (char.activeMatchCount > 0 ? char.activeMatchCount : char.matchCount)),
+  avgThrows: Math.round((char.totalThrows / (char.activeMatchCount > 0 ? char.activeMatchCount : char.matchCount)) * 10) / 10,
+  avgLightningAttacks: Math.round((char.totalLightningAttacks / (char.activeMatchCount > 0 ? char.activeMatchCount : char.matchCount)) * 10) / 10,
+  avgVanishingAttacks: Math.round((char.totalVanishingAttacks / (char.activeMatchCount > 0 ? char.activeMatchCount : char.matchCount)) * 10) / 10,
+  avgDragonHoming: Math.round((char.totalDragonHoming / (char.activeMatchCount > 0 ? char.activeMatchCount : char.matchCount)) * 10) / 10,
+  avgSpeedImpacts: Math.round((char.totalSpeedImpacts / (char.activeMatchCount > 0 ? char.activeMatchCount : char.matchCount)) * 10) / 10,
+  avgSpeedImpactWins: Math.round((char.totalSpeedImpactWins / (char.activeMatchCount > 0 ? char.activeMatchCount : char.matchCount)) * 10) / 10,
+  avgSparkingCombo: Math.round((char.totalSparkingCombo / (char.activeMatchCount > 0 ? char.activeMatchCount : char.matchCount)) * 10) / 10,
+  // Build & Equipment averages
+  avgCapsuleCost: Math.round(char.totalCapsuleCost / (char.activeMatchCount > 0 ? char.activeMatchCount : char.matchCount)),
+  avgDamageCaps: Math.round((char.totalDamageCaps / (char.activeMatchCount > 0 ? char.activeMatchCount : char.matchCount)) * 10) / 10,
+  avgDefensiveCaps: Math.round((char.totalDefensiveCaps / (char.activeMatchCount > 0 ? char.activeMatchCount : char.matchCount)) * 10) / 10,
+  avgUtilityCaps: Math.round((char.totalUtilityCaps / (char.activeMatchCount > 0 ? char.activeMatchCount : char.matchCount)) * 10) / 10,
       // Most used build archetype
       primaryBuildArchetype: Object.keys(char.buildArchetypes).length > 0
         ? Object.keys(char.buildArchetypes).reduce((a, b) => 
@@ -1280,15 +1299,19 @@ function getAggregatedCharacterData(files, charMap, capsuleMap = {}, aiStrategie
     
     // Experience multiplier based on matches played (1.0 to 1.25x, maxed at 12 matches)
     // Characters with more matches get slightly higher weight
-    const experienceMultiplier = Math.min(1.25, 1.0 + (char.matchCount - 1) * (0.25 / 11));
+  // Use active matches (non-zero battleTime) for experience weighting when available
+  const experienceMatches = (char.activeMatchCount && char.activeMatchCount > 0) ? char.activeMatchCount : char.matchCount;
+  const experienceMultiplier = Math.min(1.25, 1.0 + (experienceMatches - 1) * (0.25 / 11));
     
     // Final combat performance score
     const combatPerformanceScore = baseScore * experienceMultiplier;
     
     // Calculate win rate from matches array
-    const totalMatches = char.matches ? char.matches.length : char.matchCount;
-    const wins = char.matches ? char.matches.filter(m => m.won).length : 0;
-    const winRate = totalMatches > 0 ? Math.round((wins / totalMatches) * 1000) / 10 : 0;
+  // For win rate, prefer counting only active matches (non-zero battleTime)
+  const totalMatches = char.matches ? char.matches.length : char.matchCount;
+  const activeMatches = char.matches ? char.matches.filter(m => m.battleTime && m.battleTime > 0) : [];
+  const winsActive = activeMatches.length > 0 ? activeMatches.filter(m => m.won).length : (char.matches ? char.matches.filter(m => m.won).length : 0);
+  const winRate = activeMatches.length > 0 ? Math.round((winsActive / activeMatches.length) * 1000) / 10 : (totalMatches > 0 ? Math.round(((char.matches ? char.matches.filter(m => m.won).length : 0) / totalMatches) * 1000) / 10 : 0);
     
     // Calculate speed impact win rate (wins / impacts * 100)
     const speedImpactWinRate = char.totalSpeedImpacts > 0 
@@ -1590,12 +1613,14 @@ function getTeamAggregatedData(files, charMap, capsuleMap = {}) {
         const totalHealthRemaining = matches.reduce((sum, match) => sum + match.healthRemaining, 0);
         const totalHealthMax = matches.reduce((sum, match) => sum + match.healthMax, 0);
         const matchCount = matches.length;
+        const activeMatchCount = matches.filter(m => m.battleDuration && m.battleDuration > 0).length;
+        const denom = activeMatchCount > 0 ? activeMatchCount : matchCount;
         
-        const avgDamageDealt = Math.round(totalDamageDealt / matchCount);
-        const avgDamageTaken = Math.round(totalDamageTaken / matchCount);
-        const avgBattleDuration = totalBattleDuration / matchCount;
-        const avgHealthRemaining = totalHealthRemaining / matchCount;
-        const avgHealthMax = totalHealthMax / matchCount;
+        const avgDamageDealt = Math.round(totalDamageDealt / Math.max(denom, 1));
+        const avgDamageTaken = Math.round(totalDamageTaken / Math.max(denom, 1));
+        const avgBattleDuration = totalBattleDuration / Math.max(denom, 1);
+        const avgHealthRemaining = totalHealthRemaining / Math.max(denom, 1);
+        const avgHealthMax = totalHealthMax / Math.max(denom, 1);
         
         const damageEfficiency = totalDamageTaken > 0 ? 
           Math.round((totalDamageDealt / totalDamageTaken) * 100) / 100 : 
@@ -1612,8 +1637,8 @@ function getTeamAggregatedData(files, charMap, capsuleMap = {}) {
           (healthRetention) * 15                   // Health retention weight: 15%
         );
         
-        // Experience multiplier based on matches played (1.0 to 1.25x, maxed at 12 matches)
-        const experienceMultiplier = Math.min(1.25, 1.0 + (matchCount - 1) * (0.25 / 11));
+        // Experience multiplier based on matches played (prefer active matches)
+        const experienceMultiplier = Math.min(1.25, 1.0 + ((activeMatchCount > 0 ? activeMatchCount : matchCount) - 1) * (0.25 / 11));
         const performanceScore = Math.round((baseScore * experienceMultiplier) * 100) / 100;
         
         team.characterAverages[charName] = {
@@ -1624,6 +1649,7 @@ function getTeamAggregatedData(files, charMap, capsuleMap = {}) {
           avgHealthRetention: healthRetention,
           performanceScore,
           matchesPlayed: matchCount,
+          activeMatchesPlayed: activeMatchCount,
           usageRate: Math.round((matchCount / team.matches) * 100 * 10) / 10
         };
       }
@@ -1856,7 +1882,10 @@ export default function App() {
       const totalSuperCounters = filteredMatches.reduce((sum, m) => sum + (m.superCounterCount || 0), 0);
       const maxComboNumTotal = filteredMatches.reduce((sum, m) => sum + (m.maxComboNum || 0), 0);
       const maxComboDamageTotal = filteredMatches.reduce((sum, m) => sum + (m.maxComboDamage || 0), 0);
-      const matchCount = filteredMatches.length;
+  const matchCount = filteredMatches.length;
+  const activeMatches = filteredMatches.filter(m => m.battleTime && m.battleTime > 0);
+  const activeMatchCount = activeMatches.length;
+  const denom = activeMatchCount > 0 ? activeMatchCount : matchCount;
       
       // Recalculate teams and AI strategies used from filtered matches
       const teamsUsed = {};
@@ -1879,24 +1908,24 @@ export default function App() {
         ? aiStrategiesArray.reduce((a, b) => aiStrategiesUsed[a] > aiStrategiesUsed[b] ? a : b)
         : null;
       
-      // Calculate averages
-      const avgDamage = Math.round(totalDamage / matchCount);
-      const avgTaken = Math.round(totalTaken / matchCount);
-      const avgHealth = Math.round(totalHealth / matchCount);
-      const avgBattleTime = Math.round((totalBattleTime / matchCount) * 10) / 10;
-      const avgHPGaugeValueMax = Math.round(totalHPGaugeValueMax / matchCount);
-      const avgSpecial = Math.round((totalSpecial / matchCount) * 10) / 10;
-      const avgUltimates = Math.round((totalUltimates / matchCount) * 10) / 10;
-      const avgSkills = Math.round((totalSkills / matchCount) * 10) / 10;
-      const avgKills = Math.round((totalKills / matchCount) * 10) / 10;
-      const avgSparking = Math.round((totalSparking / matchCount) * 10) / 10;
-      const avgCharges = Math.round((totalCharges / matchCount) * 10) / 10;
-      const avgGuards = Math.round((totalGuards / matchCount) * 10) / 10;
-      const avgEnergyBlasts = Math.round((totalEnergyBlasts / matchCount) * 10) / 10;
-      const avgZCounters = Math.round((totalZCounters / matchCount) * 10) / 10;
-      const avgSuperCounters = Math.round((totalSuperCounters / matchCount) * 10) / 10;
-      const avgMaxCombo = Math.round((maxComboNumTotal / matchCount) * 10) / 10;
-      const avgMaxComboDamage = Math.round(maxComboDamageTotal / matchCount);
+  // Calculate averages (use denom which prefers active matches if present)
+  const avgDamage = Math.round(totalDamage / Math.max(denom, 1));
+  const avgTaken = Math.round(totalTaken / Math.max(denom, 1));
+  const avgHealth = Math.round(totalHealth / Math.max(denom, 1));
+  const avgBattleTime = Math.round((totalBattleTime / Math.max(denom, 1)) * 10) / 10;
+  const avgHPGaugeValueMax = Math.round(totalHPGaugeValueMax / Math.max(denom, 1));
+  const avgSpecial = Math.round((totalSpecial / Math.max(denom, 1)) * 10) / 10;
+  const avgUltimates = Math.round((totalUltimates / Math.max(denom, 1)) * 10) / 10;
+  const avgSkills = Math.round((totalSkills / Math.max(denom, 1)) * 10) / 10;
+  const avgKills = Math.round((totalKills / Math.max(denom, 1)) * 10) / 10;
+  const avgSparking = Math.round((totalSparking / Math.max(denom, 1)) * 10) / 10;
+  const avgCharges = Math.round((totalCharges / Math.max(denom, 1)) * 10) / 10;
+  const avgGuards = Math.round((totalGuards / Math.max(denom, 1)) * 10) / 10;
+  const avgEnergyBlasts = Math.round((totalEnergyBlasts / Math.max(denom, 1)) * 10) / 10;
+  const avgZCounters = Math.round((totalZCounters / Math.max(denom, 1)) * 10) / 10;
+  const avgSuperCounters = Math.round((totalSuperCounters / Math.max(denom, 1)) * 10) / 10;
+  const avgMaxCombo = Math.round((maxComboNumTotal / Math.max(denom, 1)) * 10) / 10;
+  const avgMaxComboDamage = Math.round(maxComboDamageTotal / Math.max(denom, 1));
       
       // Calculate DPS and efficiency
       const dps = Math.round((avgDamage / Math.max(avgBattleTime, 0.1)) * 10) / 10;
@@ -1911,13 +1940,14 @@ export default function App() {
         (healthRetention) * 15              // Health retention weight: 15%
       );
       
-      // Experience multiplier based on matches played (1.0 to 1.25x, maxed at 12 matches)
-      const experienceMultiplier = Math.min(1.25, 1.0 + (matchCount - 1) * (0.25 / 11));
+  // Experience multiplier based on matches played; prefer active matches for weighting
+  const experienceMultiplier = Math.min(1.25, 1.0 + ((activeMatchCount > 0 ? activeMatchCount : matchCount) - 1) * (0.25 / 11));
       const combatPerformanceScore = baseScore * experienceMultiplier;
       
       return {
         ...char,
         matchCount,
+        activeMatchCount,
         totalDamage,
         totalTaken,
         totalHealth,
@@ -1935,10 +1965,10 @@ export default function App() {
         totalSuperCounters,
         maxComboNumTotal,
         maxComboDamageTotal,
-        avgDamage,
-        avgTaken,
-        avgHealth,
-        avgBattleTime,
+  avgDamage,
+  avgTaken,
+  avgHealth,
+  avgBattleTime,
         avgHPGaugeValueMax,
         avgSpecial,
         avgUltimates,
@@ -1970,10 +2000,11 @@ export default function App() {
       );
     }
     
-    // Apply minimum/maximum matches filter
-    filtered = filtered.filter(char => 
-      char.matchCount >= minMatches && char.matchCount <= maxMatches
-    );
+    // Apply minimum/maximum matches filter (use activeMatchCount when available)
+    filtered = filtered.filter(char => {
+      const matchesForFilter = (char.activeMatchCount && char.activeMatchCount > 0) ? char.activeMatchCount : char.matchCount;
+      return matchesForFilter >= minMatches && matchesForFilter <= maxMatches;
+    });
     
     // Apply performance level filter
     if (performanceFilters.length > 0 && performanceFilters.length < 5) {
@@ -4165,6 +4196,25 @@ export default function App() {
         {((mode === 'reference' && (analysisSelectedFilePath || selectedFilePath) && viewType === 'single') || 
           (mode === 'manual' && (((analysisSelectedFilePath && analysisFileContent) || (selectedFilePath && fileContent)) && viewType === 'single'))) && (
           <div className={`rounded-2xl shadow-xl p-6 ${darkMode ? 'bg-gray-800' : 'bg-white'}`}>
+            <div className="relative mb-2">  
+              <div className={`flex left-3 top-1/2 transform -translate-y-1/2 text-sm font-medium mb-2 gap-2 ${darkMode ? 'text-gray-300' : 'text-gray-500'}`}>
+                <Search className="w-4 h-4" /> Match Selection
+              </div>
+              <input
+                ref={headerInputRef}
+                type="text"
+                value={headerFileInput || ''}
+                onChange={e => { setHeaderFileInput(e.target.value); setHeaderDropdownOpen(e.target.value.length > 0); setHeaderHighlightedIndex(-1); }}
+                onKeyDown={e => handleHeaderKeyDown(e, (Array.isArray(fileContent) ? fileContent.filter(fc => fc.name) : (mode === 'manual' ? manualFiles.filter(f => !f.error).map(f => ({ name: f.name })) : [])))}
+                placeholder="Search match to analyze..."
+                className={`w-full pl-10 pr-10 py-2 rounded-lg border text-sm focus:outline-none focus:ring-2 ${
+                  darkMode
+                    ? 'bg-gray-800 border-gray-600 text-white placeholder-gray-400 focus:ring-blue-400'
+                    : 'bg-white border-gray-300 text-gray-900 placeholder-gray-500 focus:ring-blue-500'
+                }`}
+                onFocus={() => setHeaderDropdownOpen((headerFileInput || '').length > 0)}
+              />
+            </div>
             <div className="flex items-center justify-between mb-6">
               <div className="flex items-center gap-3">
                 <FileText className={`w-8 h-8 ${darkMode ? 'text-blue-400' : 'text-blue-600'}`} />
@@ -4179,24 +4229,6 @@ export default function App() {
                 {/* Searchable input + dropdown for reference files */}
                 {(mode === 'reference' || mode === 'manual') && (
                   <div className="flex items-center gap-3">
-                    <div className={`absolute left-3 top-1/2 transform -translate-y-1/2 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
-                      <Search className="w-4 h-4" />
-                    </div>
-                    <input
-                      ref={headerInputRef}
-                      type="text"
-                      value={headerFileInput || ''}
-                      onChange={e => { setHeaderFileInput(e.target.value); setHeaderDropdownOpen(e.target.value.length > 0); setHeaderHighlightedIndex(-1); }}
-                      onKeyDown={e => handleHeaderKeyDown(e, (Array.isArray(fileContent) ? fileContent.filter(fc => fc.name) : (mode === 'manual' ? manualFiles.filter(f => !f.error).map(f => ({ name: f.name })) : [])))}
-                      placeholder="Search match to analyze..."
-                      className={`w-56 pl-10 pr-10 py-2 rounded-lg border text-sm focus:outline-none focus:ring-2 ${
-                        darkMode
-                          ? 'bg-gray-800 border-gray-600 text-white placeholder-gray-400 focus:ring-blue-400'
-                          : 'bg-white border-gray-300 text-gray-900 placeholder-gray-500 focus:ring-blue-500'
-                      }`}
-                      onFocus={() => setHeaderDropdownOpen((headerFileInput || '').length > 0)}
-                    />
-
                     {false && (
                       <div ref={headerDropdownRef} style={{ maxHeight: '360px' }} className={`absolute z-20 mt-1 w-56 overflow-y-auto rounded-lg border shadow-lg ${
                         darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'
