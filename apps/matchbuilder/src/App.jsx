@@ -1747,7 +1747,7 @@ const Combobox = ({
 
       {/* Tooltip portal */}
       {tooltipOpen && (typeof document !== 'undefined') ? createPortal(
-        <div ref={(el) => { try { tRefs.setFloating?.(el); } catch(e){} }} style={tFloatingStyles} className="z-[10000] pointer-events-none max-w-lg text-sm text-slate-100 bg-slate-900 p-2 rounded shadow-lg whitespace-pre-wrap">
+        <div ref={(el) => { try { tRefs.setFloating?.(el); } catch(e){} }} style={tFloatingStyles} className="z-[10000] pointer-events-none max-w-xs sm:max-w-sm md:max-w-lg lg:max-w-xl xl:max-w-2xl text-sm text-slate-100 bg-slate-900 p-2 rounded shadow-lg whitespace-pre-wrap">
           {tooltipContent}
         </div>,
         document.body
