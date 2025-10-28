@@ -2213,9 +2213,11 @@ const CharacterSlot = ({
                         const EXPENSIVE_THRESHOLD = 10; // adjust as desired
                         // determine base color by cost
                         let baseClass = 'bg-amber-200 text-slate-800';
-                        if (cost === 1) baseClass = 'bg-amber-100 text-slate-800';
+                        if (cost <= 1) baseClass = 'bg-amber-100 text-slate-800';
                         else if (cost === 2) baseClass = 'bg-amber-200 text-slate-800';
-                        else if (cost >= 3) baseClass = 'bg-amber-300 text-slate-800';
+                        else if (cost === 3) baseClass = 'bg-amber-300 text-slate-800';
+                        else if (cost === 4) baseClass = 'bg-amber-400 text-slate-800';
+                        else if (cost >= 5) baseClass = 'bg-amber-500 text-slate-800';
                         // determine if we should show red: either cost meets expensive threshold OR character is over budget
                         const rulesetActive = !!(ruleset && ruleset.scope && ruleset.scope !== 'none');
                         const showOver = (rulesetActive && over > 0) || (cost >= EXPENSIVE_THRESHOLD);
@@ -2232,9 +2234,11 @@ const CharacterSlot = ({
                         const over = sumUsed - total;
                         const EXPENSIVE_THRESHOLD = 10;
                         let baseClass = 'bg-amber-200 text-slate-800';
-                        if (cost === 1) baseClass = 'bg-amber-100 text-slate-800';
+                        if (cost <= 1) baseClass = 'bg-amber-100 text-slate-800';
                         else if (cost === 2) baseClass = 'bg-amber-200 text-slate-800';
-                        else if (cost >= 3) baseClass = 'bg-amber-300 text-slate-800';
+                        else if (cost === 3) baseClass = 'bg-amber-300 text-slate-800';
+                        else if (cost === 4) baseClass = 'bg-amber-400 text-slate-800';
+                        else if (cost >= 5) baseClass = 'bg-amber-500 text-slate-800';
                         const rulesetActive = !!(ruleset && ruleset.scope && ruleset.scope !== 'none');
                         const showOver = (rulesetActive && over > 0) || (cost >= EXPENSIVE_THRESHOLD);
                         const badgeClass = showOver ? 'bg-red-900 text-white' : baseClass;
