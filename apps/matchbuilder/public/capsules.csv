@@ -1,97 +1,154 @@
 ﻿Item Names,ID,Type,Exclusive To,Cost,Effect
-Master Roshi Training,00_0_0000,Capsule,,1,25% of a Health bar increase
-Rush Attack Boost 1,00_0_0005,Capsule,,1,Rush Damage increase 2.4%
-Rush Attack Boost 2,00_0_0006,Capsule,,3,Rush Damage increase 4.6%
-Rush Attack Boost 3,00_0_0007,Capsule,,5,Rush Damage increase 7.1%
-Smash Attack Boost 1,00_0_0011,Capsule,,1,Rush Chain Damage increase 2.4% Smash Damage increase 2.3%
-Smash Attack Boost 2,00_0_0012,Capsule,,3,Rush Chain Damage increase 5% Smash Damage increase 5%
-Smash Attack Boost 3,00_0_0013,Capsule,,5,Rush Chain Damage increase  7.1% Smash Damage increase 7.1%
-Ki Blast Attack Boost 1,00_0_0014,Capsule,,1,Ki Blast Damage increase 2.1%
-Ki Blast Attack Boost 2,00_0_0015,Capsule,,3,Ki Blast Damage increase 4.5%
-Ki Blast Attack Boost 3,00_0_0016,Capsule,,5,Ki Blast Damage increase 7%
-Power Unleashed,00_0_0023,Capsule,,2,"Increases ""Burst Rush"" Damage by 5%"
-Finishing Blow,00_0_0024,Capsule,,1,"Increases ""Burst Meteor"" Damage by 1%"
-Blast Burst,00_0_0026,Capsule,,1,Increases Blast Damage by 5% Increases Ki consumption for Blast attacks by 1 bar.
-Ultimate Burst,00_0_0027,Capsule,,2,Increases Ultimate Blast damage by 5% and makes the character have negative 1 Ki bar stunning the character
-Blast Attack Boost 1,00_0_0028,Capsule,,1,Blast Damage increase 2.3% Ultimate Blast Damage increase 2.4%
-Blast Attack Boost 2,00_0_0029,Capsule,,3,Blast Damage increase 5% Ultimate Blast Damage increase 5%
-Blast Attack Boost 3,00_0_0030,Capsule,,5,Blast Damage increase 7.2 Ultimate Blast Damage increase 7%
-Super Warrior,00_0_0031,Capsule,,2,Increases Rush Attack Damage by 5% while in Sparking
-Draconic Aura,00_0_0032,Capsule,,4,Flinches opponent with every hit. Ki blast and melee. Beats Power body and Light body.
-Light Body,00_0_0033,Capsule,,4,Cannot be flinched by Ki Blasts (Giants and Sparking ignore this capsule)
-Dragon Rush,00_0_0035,Capsule,,3,Flinches opponent with every hit. Melee only. Beats Power Body
-The Secret to Counters,00_0_0037,Capsule,,5,Reduces Skill count needed for Super Z-Counters by 1. (Cannot be less than 1) (When you counter a revenge counter)
-Fury!,00_0_0038,Capsule,,4,Increase Damage by 5% per health bar. Health bars obtained by items do not count.
-Active Heart,00_0_0039,Capsule,,1,5% increase in ki recovery for rush attacks
-Indomitable Fighting Spirit,00_0_0040,Capsule,,3,16% increase in ki recovery for rush attacks.
-Warming Up,00_0_0041,Capsule,,2,"Gain 25% more health when switched out. Normal  time is 1 health bar per 60seconds, with the item you will get 1.25 bars in 60 seconds"
-Ready for Anything,00_0_0042,Capsule,,1,33% Speed increase for standbi ki. usually 90seconds for 2 bars however with the item it takes 60.
-Z-Burst Dash Master,00_0_0046,Capsule,,3,Cuts ki consumption in half for Z-burst dashes. Z-Burst dash is the super fast dash that goes around the opponent
-The Secret to Z-Burst Dashes,00_0_0047,Capsule,,5,No ki consumption for Z-burst dashes. Z-Burst dash is the super fast dash that goes around the opponent
-Proof of Friendship,00_0_0048,Capsule,,2,Switch gauge starts out full at the beginning of battle.
-Dragon Spirit,00_0_0055,Capsule,,3,Reduces Skill bar recovery time by 18% from 14seconds to 11.5seconds
-Super Transformation,00_0_0066,Capsule,,1,Reduces skill count needed for Fusions and Transformation by 1. (Cannot be below 1)
-Fighting Spirit,00_0_0068,Capsule,,5,"Increases Damage by approx 5% per health bar lost. Actual numbers per health bar is 5.5%, 9.1%, 12.5%. Health bars added from items do not count. Applies to Ultimate"
-Divine Blow,00_0_0070,Capsule,,3,Increases Ultimate Blast Damage by 5%
-Rising Fighting Spirit,00_0_0072,Capsule,,3,Ki gauge starts out full at the beginning of battle.
-Power of Namek,00_0_0074,Capsule,,5,Increases All Damage by 2% (Does not effect Defense and Only works on Planet Namek does not work on Destroyed Planet Namek even if the map was destroyed mid match)
-Power of Earth,00_0_0075,Capsule,,5,Increases All Damage by 2% (Does not effect Defense and works on every Earth map except City Ruins and Hyperbolic Time Chamber)
-Power of the Universe,00_0_0076,Capsule,,5,Increases All Damage by 2% (Does not effect Defense and Only works on Tournament of Power Arena)
-Perfect Guard,00_0_0082,Capsule,,5,Take no chip damage while blocking
-Crisis Avoided,00_0_0092,Capsule,,1,Short dashes use 7% less ki
-Battle Control,00_0_0093,Capsule,,2,Reduces switch time from 25 seconds to 15seconds or 40%
-Latent Power Unleashed 1,00_0_0094,Capsule,,1,Start battle with an extra ki gauge.
-Latent Power Unleashed 2,00_0_0095,Capsule,,2,Start battle with two extra ki gauge.
-Big Impact,00_0_0096,Capsule,,1,(Only works in DP Battles) 500 to start with 1 DP difference then 250 more damage per DP increase. Not punished if it goes lower.
-Mind Breaker,00_0_0098,Capsule,,1,Does 1.5 ki bars instead of 1. 50% increase Applies to ki damage after a guard break.
-Waters Blessing,00_0_0099,Capsule,,1,Recover 1 health bar in 1minute 40 seconds while in water
-Miracle Master,00_0_0101,Capsule,,1,Auto dodges attackes when on the ground.
-Latent Power!,00_0_0102,Capsule,,5,"Increases defense by each health bar lost. 2.6%, 8%, 15%"
-Guard Master,00_0_0103,Capsule,,1,Guard cannot be broken
-Mirage,00_0_0104,Capsule,,1,If you dodge a barrage from a Blast once then you will continuously dodge until it is over.
-Dendes Healing Ability,00_0_0111,Capsule,,4,Recieve Half a bar of health every 60 seconds. Attacking or defending doesn't matter
-Rising Tension,00_0_0112,Capsule,,3,Recovers 1 ki bar per 60secs
-Melee Charge 1,00_0_0113,Capsule,,1,Melee Charge reduction 233ms or 22%
-Melee Charge 2,00_0_0114,Capsule,,2,Melee Charge reduction 693ms or 35%
-Melee Charge 3,00_0_0115,Capsule,,3,Melee Charge reduction 693ms or 35% (Not an error)
-Energy Saver 1,00_0_0116,Capsule,,1,Ki Blasts Ki reduction 1.6%
-Energy Saver 2,00_0_0117,Capsule,,2,Ki Blasts Ki reduction 2.5%
-Energy Saver 3,00_0_0118,Capsule,,3,Ki Blasts Ki reduction 4.8%
-Ki Blast Charge 1,00_0_0119,Capsule,,1,No Effect
-Ki Blast Charge 2,00_0_0120,Capsule,,2,No Effect
-Ki Blast Charge 3,00_0_0121,Capsule,,3,No Effect
-Dragon Assault,00_0_0122,Capsule,,3,"Reduces Ki of Vanishing Assualt(X,RB on standard xbox controls) by 16.5%"
-Power Body,00_0_0123,Capsule,,5,Takes 4-5X  (Depends on character) or Smash Attack/Rush Chain to flinch opponent armor applied to BACK as well Decreases Defense by 12% (Giant Characters and Sparking ignore this capsule)
-Speed Up,00_0_0124,Capsule,,3,12% ki cost reduction for short dashes
-Exquisite Skill,00_0_0125,Capsule,,1,Increase stun on opponent by 16% Decreases users time stunned by 6.2% Applies when stunned or restrained.
-Ki Control,00_0_0126,Capsule,,3,"33% less ki consumption for Dragon Dashes,  17% slower ki recovery"
-The Secret to Dragon Dashes,00_0_0127,Capsule,,5,33% less ki consumption for Dragon Dashes
-Savior,00_0_0128,Capsule,,5,Enter Sparking when switching to the character with this capsule equipped for the first time. (Only works once per match)
-Combo Master,00_0_0129,Capsule,,1,Increases damage per hit by .0012%
-Combo King,00_0_0130,Capsule,,2,Increases damage per hit by .0035%
-God Ki,00_0_0131,Capsule,,5,Resuces ki needed for Blasts by half and if it or an Ultimate misses then you get 1 ki bar back.
-Sparking! Plus,00_0_0132,Capsule,,1,Increases Duration of Sparking by 3 secs and reduces defense by 12%
-Style of the Strong,00_0_0133,Capsule,,2,Increases Duration of Sparking by 3 secs
-Dragon Break,00_0_0134,Capsule,,2,"Increases number of ""Dragon Homing"" uses by one."
-Dragon Crash,00_0_0135,Capsule,,2,"Increases ""Dragon Smash"" Damage by 5%"
-Vanishing Break,00_0_0136,Capsule,,2,"Increases number of ""Vanishing Attack's"" by one."
-Vanishing Crash,00_0_0137,Capsule,,2,"Increases ""Vanishing Attack"" Damage by 5%"
-Secret Measures,00_0_0138,Capsule,,2,Skill Count increases by one at the beginning of battle.
-Rush Ki Blast 1,00_0_0139,Capsule,,1,Increases Ki blast speed by 1.5%
-Rush Ki Blast Count Boost,00_0_0140,Capsule,,1,Increases maximum Ki blast by 2
-Master Strike,00_0_0141,Capsule,,3,Increases Rush and Smash attacks by 5% reduces HP by half of one bar
-Master Ki Blast,00_0_0142,Capsule,,2,Slightly Increases the speed of Rush ki blasts by 13%. Reduces Ki cost for Rush ki blast by 6.2% and Smash ki blasts by 4.8%. Reduces HP by half of one bar
-Master Throw,00_0_0143,Capsule,,1,Increases throw damage by 5%
-High-Speed Movement Master,00_0_0144,Capsule,,1,"Reduces Ki consumption of ""High-Speed Movement"" by 20% while also decreasing your defense by 20%"
-The Secret to High-Speed Movements,00_0_0145,Capsule,,1,"Reduces Ki consumption of ""High-Speed Movement"" by 20%"
-Super Movement Master,00_0_0146,Capsule,,1,"Reduces Ki consumption of ""Super Movement"" by 20% while also decreasing your defense by 20%"
-The Secret to Super Movements,00_0_0147,Capsule,,1,"Reduces Ki consumption of ""Super Movement"" by 20%"
-Performer,00_0_0148,Capsule,,1,Increases Blast damage by 5% for 30seconds after doing an emote.
-Dragon Heart,00_0_0149,Capsule,,3,"Increases the Skill bar by 25% after the user dodged a Blast or Ultimate Blast with ""High-Speed Movement"""
-King Kai Training,00_0_0150,Capsule,,3,50% of a Health bar increase
-God of Destruction Training,00_0_0151,Capsule,,5,75% of a Health Bar increase
-Almighty Boost,00_0_0152,Capsule,,5,"Increase Rush Attack power by 2.44%, Smash Attack power by 2.31%, Rush Chain attack power by 2.40%(Uncharged) & 2.31%(Charged), Rush Ki Blast power by 2.13% and Smash Ki Blast attack power by 2.39%"
-Super Sparking!,00_0_0153,Capsule,,4,Increase rush attack power while in sparking! Sparking lasts longer. Details not yet determined
+Master Roshi Training,00_0_0000,Capsule,,1,"Increases maximum health by 2,500 HP (1/4 of a bar)."
+Rush Attack Boost 1,00_0_0005,Capsule,,1,Increases Rush Attack damage by 2.5%.
+Rush Attack Boost 2,00_0_0006,Capsule,,3,Increases Rush Attack damage by 5%.
+Rush Attack Boost 3,00_0_0007,Capsule,,5,Increases Rush Attack damage by 7.5%.
+Smash Attack Boost 1,00_0_0011,Capsule,,1,"Increases Smash Attack damage by 2.5%. 
+Increases Rush Chain damage by 2.5%."
+Smash Attack Boost 2,00_0_0012,Capsule,,3,"Increases Smash Attack damage by 5%. 
+Increases Rush Chain damage by 5%."
+Smash Attack Boost 3,00_0_0013,Capsule,,5,"Increases Smash Attack damage by 7.5%. 
+Increases Rush Chain damage by 7.5%."
+Ki Blast Attack Boost 1,00_0_0014,Capsule,,1,"Increases Rush Ki Blast damage by 2.5%. 
+Increases Smash Ki Blast damage by 2.5%."
+Ki Blast Attack Boost 2,00_0_0015,Capsule,,3,"Increases Rush Ki Blast damage by 5%. 
+Increases Smash Ki Blast damage by 5%."
+Ki Blast Attack Boost 3,00_0_0016,Capsule,,5,"Increases Rush Ki Blast damage by 7.5%. 
+Increases Smash Ki Blast damage by 7.5%."
+Power Unleashed,00_0_0023,Capsule,,2,Increases Burst Rush damage by 5%.
+Finishing Blow,00_0_0024,Capsule,,1,Increases Burst Meteor damage by 5%.
+Blast Burst,00_0_0026,Capsule,,1,"Increases ki cost for Blasts by 1 bar. 
+Increases Blast damage by 5%. 
+Increases Blast Combo damage by 5%."
+Ultimate Burst,00_0_0027,Capsule,,2,"Increases ki cost for Ultimate Blasts by 1 bar. 
+Causes stun when Sparking Mode ends after using Ultimate Blast. 
+Increases Ultimate Blast damage by 5%."
+Blast Attack Boost 1,00_0_0028,Capsule,,1,"Increases Blast damage by 2.5%. 
+Increases Blast Combo damage by 2.5%. 
+Increases Ultimate Blast damage by 2.5%."
+Blast Attack Boost 2,00_0_0029,Capsule,,3,"Increases Blast damage by 5%. 
+Increases Blast Combo damage by 5%. 
+Increases Ultimate Blast damage by 5%."
+Blast Attack Boost 3,00_0_0030,Capsule,,5,"Increases Blast damage by 7.5%. 
+Increases Blast Combo damage by 7.5%. 
+Increases Ultimate Blast damage by 7.5%."
+Super Warrior,00_0_0031,Capsule,,2,Increases Rush Attack damage by 5% during Sparking Mode.
+Draconic Aura,00_0_0032,Capsule,,4,"Increases armor break level by 3.
+Beats Power body and Light body."
+Light Body,00_0_0033,Capsule,,4,"Increases bullet armor level by 3.
+Cannot be flinched by Ki Blasts (Giants and Sparking ignore this capsule)."
+Dragon Rush,00_0_0035,Capsule,,3,"Increases armor break level by 3 against Rush Attack category actions.
+Beats Power Body."
+The Secret to Counters,00_0_0037,Capsule,,5,Reduces Skill Count needed for Super Z-Counters by 1 (minimum 1).
+Fury!,00_0_0038,Capsule,,4,"Increases Blast damage by 5% at 75% HP. 
+Increases Blast damage by additional 5% (10% total) at 50% HP. 
+Increases Blast damage by additional 5% (15% total) at 25% HP. 
+Increases Blast Combo damage by same amounts."
+Active Heart,00_0_0039,Capsule,,1,Increases ki gained from landing attacks by 10%.
+Indomitable Fighting Spirit,00_0_0040,Capsule,,3,Increases ki gained from landing attacks by 20%.
+Warming Up,00_0_0041,Capsule,,2,Increases health recovery while on standby in Team Battles by 50%.
+Ready for Anything,00_0_0042,Capsule,,1,Increases ki recovery per second while on standby in Team Battles by 50%.
+Z-Burst Dash Master,00_0_0046,Capsule,,3,Reduces ki cost for Z-Burst Dashes by 50%.
+The Secret to Z-Burst Dashes,00_0_0047,Capsule,,5,Reduces ki cost for Z-Burst Dashes by 100% (free).
+Proof of Friendship,00_0_0048,Capsule,,2,Switch gauge starts at maximum.
+Dragon Spirit,00_0_0055,Capsule,,3,Increases skill gauge recovery speed by 25%.
+Super Transformation,00_0_0066,Capsule,,1,Reduces Skill Count needed for Transformations and Fusions by 1 (minimum 1).
+Fighting Spirit,00_0_0068,Capsule,,5,"Increases Ultimate Blast damage by 5% at 75% HP. 
+Increases Ultimate Blast damage by additional 5% (10% total) at 50% HP. 
+Increases Ultimate Blast damage by additional 5% (15% total) at 25% HP."
+Divine Blow,00_0_0070,Capsule,,3,Increases Ultimate Blast damage by 5%.
+Rising Fighting Spirit,00_0_0072,Capsule,,3,Ki gauge starts at maximum.
+Power of Namek,00_0_0074,Capsule,,5,"Increases all attack damage by 2.5% on Namek map.
+Increases Rush, Smash, Combo, Ki Blasts, Blasts, Ultimate Blasts, Throws, Parries, Pursuits."
+Power of Earth,00_0_0075,Capsule,,5,"Increases all attack damage by 2.5% on Earth maps (excluding City Ruins and Hyperbolic Time Chamber).
+Increases Rush, Smash, Combo, Ki Blasts, Blasts, Ultimate Blasts, Throws, Parries, Pursuits."
+Power of the Universe,00_0_0076,Capsule,,5,"Increases all attack damage by 2.5% on Tournament of Power map.
+Increases Rush, Smash, Combo, Ki Blasts, Blasts, Ultimate Blasts, Throws, Parries, Pursuits."
+Perfect Guard,00_0_0082,Capsule,,5,Take no damage while guarding.
+Crisis Avoided,00_0_0092,Capsule,,1,Reduces ki cost for Short Dashes by 10%.
+Battle Control,00_0_0093,Capsule,,2,Increases Switch gauge recovery by 50% in Team Battles.
+Latent Power Unleashed 1,00_0_0094,Capsule,,1,Ki gauge starts with 1 bar extra.
+Latent Power Unleashed 2,00_0_0095,Capsule,,2,Ki gauge starts with 2 bars extra.
+Big Impact,00_0_0096,Capsule,,1,"Increases all Impact Action damage by 20% per DP advantage enemy has over you (stacks up to 5 times for 100% total). 
+Only active when enemy has 1-5 more DP than you."
+Mind Breaker,00_0_0098,Capsule,,1,Increases ki damage dealt after successful Guard Clash by 50%.
+Waters Blessing,00_0_0099,Capsule,,1,Regenerates 100 HP per second and 100 ki per second while in water (1 bar of health and ki every 100 seconds).
+Miracle Master,00_0_0101,Capsule,,1,Automatically dodges melee attacks when downed (excludes Ki Blasts).
+Latent Power!,00_0_0102,Capsule,,5,"Increases damage resistance by 2.5% at 75% HP. 
+Increases damage resistance by additional 5% (7.5% total) at 50% HP. 
+Increases damage resistance by additional 7.5% (15% total) at 25% HP."
+Guard Master,00_0_0103,Capsule,,1,Grants immunity to Guard Clashes.
+Mirage,00_0_0104,Capsule,,1,Automatically dodges subsequent barrage Blasts after dodging one with High-Speed Movement or High-Speed Evasion.
+Dendes Healing Ability,00_0_0111,Capsule,,4,"Recovers 5,000 HP (half a bar) every 60 seconds."
+Rising Tension,00_0_0112,Capsule,,3,Recovers 1 bar of ki every 60 seconds
+Melee Charge 1,00_0_0113,Capsule,,1,"Reduces charging time for Smash Attacks by 2%. 
+Reduces charging time for Rush Chains by 2%."
+Melee Charge 2,00_0_0114,Capsule,,2,"Reduces charging time for Smash Attacks by 3%. 
+Reduces charging time for Rush Chains by 3%."
+Melee Charge 3,00_0_0115,Capsule,,3,"Reduces charging time for Smash Attacks by 5%. 
+Reduces charging time for Rush Chains by 5%."
+Energy Saver 1,00_0_0116,Capsule,,1,"Reduces ki cost for Rush Ki Blasts by 2%. 
+Reduces ki cost for Smash Ki Blasts by 2%."
+Energy Saver 2,00_0_0117,Capsule,,2,"Reduces ki cost for Rush Ki Blasts by 3%. 
+Reduces ki cost for Smash Ki Blasts by 3%."
+Energy Saver 3,00_0_0118,Capsule,,3,"Reduces ki cost for Rush Ki Blasts by 5%. 
+Reduces ki cost for Smash Ki Blasts by 5%."
+Ki Blast Charge 1,00_0_0119,Capsule,,1,Reduces charging time for Smash Ki Blasts by 2%.
+Ki Blast Charge 2,00_0_0120,Capsule,,2,Reduces charging time for Smash Ki Blasts by 3%.
+Ki Blast Charge 3,00_0_0121,Capsule,,3,Reduces charging time for Smash Ki Blasts by 5%.
+Dragon Assault,00_0_0122,Capsule,,3,Reduces ki cost for Vanishing Assaults by 15%.
+Power Body,00_0_0123,Capsule,,5,"Increases combatives armor level by 3. 
+Reduces melee defense by 20%. 
+Reduces blast defense by 10%."
+Speed Up,00_0_0124,Capsule,,3,Reduces ki cost for Short Dashes by 20%.
+Exquisite Skill,00_0_0125,Capsule,,1,"Reduces self recovery time when stunned/restrained by 20%. 
+Increases enemy recovery time when stunned/restrained by 20%."
+Ki Control,00_0_0126,Capsule,,3,"Reduces ki cost for Dragon Dashes by 25%. 
+Reduces automatic ki recovery by 5%."
+The Secret to Dragon Dashes,00_0_0127,Capsule,,5,Reduces ki cost for Dragon Dashes by 25%.
+Savior,00_0_0128,Capsule,,5,"Activates Sparking Mode on first switch-in. 
+Only activates once per team in Team Battles."
+Combo Master,00_0_0129,Capsule,,1,Reduces combo damage scaling by 2.5%.
+Combo King,00_0_0130,Capsule,,2,Reduces combo damage scaling by 5%.
+God Ki,00_0_0131,Capsule,,5,"Reduces ki cost for Blasts by 50%. 
+Recovers 1 bar of ki after unsuccessful Blast."
+Sparking! Plus,00_0_0132,Capsule,,1,"Reduces Sparking Mode gauge decrease speed by 15%. 
+Reduces melee defense by 20%. 
+Reduces blast defense by 10%."
+Style of the Strong,00_0_0133,Capsule,,2,Reduces Sparking Mode gauge decrease speed by 15%.
+Dragon Break,00_0_0134,Capsule,,2,Increases Dragon Homing use limit by 1.
+Dragon Crash,00_0_0135,Capsule,,2,Increases Dragon Smash damage by 5%.
+Vanishing Break,00_0_0136,Capsule,,2,Increases Vanishing Attack use limit by 1.
+Vanishing Crash,00_0_0137,Capsule,,2,Increases Vanishing Attack damage by 5%.
+Secret Measures,00_0_0138,Capsule,,2,Grants 1 additional Skill Count.
+Rush Ki Blast 1,00_0_0139,Capsule,,1,Increases Rush Ki Blast speed by 5%.
+Rush Ki Blast Count Boost,00_0_0140,Capsule,,1,Increases Rush Ki Blast maximum count by 2.
+Master Strike,00_0_0141,Capsule,,3,"Increases Rush Attack damage by 5%. 
+Increases Smash Attack damage by 5%. 
+Increases Rush Chain damage by 5%. 
+Reduces maximum health by 5,000 HP (half a bar)."
+Master Ki Blast,00_0_0142,Capsule,,2,"Increases Rush Ki Blast speed by 5%. 
+Reduces ki cost for Rush Ki Blasts by 5%. 
+Reduces ki cost for Smash Ki Blasts by 5%. 
+Reduces maximum health by 5,000 HP (half a bar)."
+Master Throw,00_0_0143,Capsule,,1,Increases Throw damage by 5%.
+High-Speed Movement Master,00_0_0144,Capsule,,1,"Reduces Sparking gauge cost for High-Speed Movements by 25%. 
+Reduces all defense by 20%."
+The Secret to High-Speed Movements,00_0_0145,Capsule,,1,Reduces Sparking gauge cost for High-Speed Movements by 25%.
+Super Movement Master,00_0_0146,Capsule,,1,"Reduces Sparking gauge cost for Super Movements by 25%. 
+Reduces all defense by 20%."
+The Secret to Super Movements,00_0_0147,Capsule,,1,Reduces Sparking gauge cost for Super Movements by 25%.
+Performer,00_0_0148,Capsule,,1,Increases Blast by 5% for 30 seconds after using an emote for 1.5+ seconds.
+Dragon Heart,00_0_0149,Capsule,,3,Recovers 25% of Skill gauge after dodging a Blast or Ultimate Blast with High-Speed Movement.
+King Kai Training,00_0_0150,Capsule,,3,"Increases maximum health by 5,000 HP (half a bar)."
+God of Destruction Training,00_0_0151,Capsule,,5,"Increases maximum health by 7,500 HP (3/4 of a bar)."
+Almighty Boost,00_0_0152,Capsule,,5,"Increases Rush Attack damage by 2.5%. 
+Increases Smash Attack damage by 2.5%. 
+Increases Rush Chain damage by 2.5%. 
+Increases Rush Ki Blast damage by 2.5%. 
+Increases Smash Ki Blast damage by 2.5%."
+Super Sparking!,00_0_0153,Capsule,,4,"Increases Rush Attack damage by 5% during Sparking Mode. 
+Reduces Sparking Mode gauge decrease speed by 5%."
 Brolys Ring,00_0_0155,Capsule,,1,Prevents Transformations and Fusions during battle
 Balanced Strategy: Melee,00_7_0000,AI,,,
 Balanced Strategy: Ki Blasts,00_7_0001,AI,,,
