@@ -512,7 +512,7 @@ export default function BRDataSelector({ onSelect }) {
         }}
       >
         {/* Expand/Collapse all buttons — positioned at top-right of the results area */}
-  <Box sx={{ display: 'flex', justifyContent: 'flex-end', mb: '-20px' }}>
+  <Box sx={{ display: 'flex', justifyContent: 'flex-end', mb: '10px' }}>
           <Button
             size="small"
             onClick={expandAll}
@@ -884,12 +884,117 @@ export default function BRDataSelector({ onSelect }) {
             )}
           </Box>
         ) : (
-          // No search - show message to use search
-          <Box sx={{ textAlign: 'center', color: 'rgba(255, 255, 255, 0.5)', padding: 4 }}>
-            <SearchIcon sx={{ fontSize: 48, marginBottom: 2, opacity: 0.3 }} />
-            <Box sx={{ fontSize: '0.875rem' }}>
-              Use the search bar above to find and select categories or matches
-            </Box>
+          // No search - show top-level categories collapsed by default
+          <Box>
+            {Object.keys(structure).map(category => {
+              const CategoryIcon = getCategoryIcon(category);
+              const catNode = structure[category];
+              const allChildIds = getAllChildIds(catNode, [category]);
+              const isFully = isCategoryFullySelected(category);
+              const isPartial = !isFully && allChildIds.some(id => selected.includes(id));
+              // immediate child folders under this category
+              const immediateFolders = flatItems.filter(it => it.type === 'folder' && it.path.length === 2 && it.category === category);
+              // files directly under category (path length === 1)
+              const directFiles = flatItems.filter(it => it.type === 'file' && it.path.length === 1 && it.category === category);
+              const isExpanded = expandedFolders.includes(category);
+              return (
+                <Box key={category} sx={{ marginBottom: 2 }}>
+                  {/* Panel for the top-level category - clickable to toggle selection */}
+                  <Box
+                    onClick={() => toggleCategorySelection(category)}
+                    sx={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 1,
+                      mb: 1,
+                      px: 1.5,
+                      py: 1,
+                      borderRadius: 1,
+                      border: '1px solid',
+                      borderColor: isFully ? 'rgba(33, 150, 243, 0.5)' : 'rgba(255,255,255,0.06)',
+                      backgroundColor: isFully ? 'rgba(33, 150, 243, 0.08)' : 'transparent',
+                      cursor: 'pointer',
+                      '&:hover': { backgroundColor: isFully ? 'rgba(33,150,243,0.12)' : 'rgba(255,255,255,0.02)' }
+                    }}
+                  >
+                    <Checkbox
+                      size="small"
+                      checked={isFully}
+                      indeterminate={isPartial}
+                      onClick={(e) => { e.stopPropagation(); toggleCategorySelection(category); }}
+                      sx={{ color: 'rgba(255,255,255,0.8)' }}
+                    />
+                    <CategoryIcon fontSize="small" sx={{ color: 'rgba(255, 255, 255, 1)' }} />
+                    <Box sx={{ fontSize: '0.95rem', fontWeight: 'bold', color: 'rgba(255,255,255,0.9)', ml: 0.5 }}>{category}</Box>
+                    <Box sx={{ flex: 1 }} />
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                      <Box sx={{ fontSize: '0.75rem', color: 'rgba(255,255,255,0.7)', minWidth: 48, textAlign: 'right' }}>
+                        {allChildIds.filter(id => id.includes('.json')).length} file{allChildIds.filter(id => id.includes('.json')).length !== 1 ? 's' : ''}
+                      </Box>
+                      <IconButton
+                        size="small"
+                        sx={{ ml: 1, p: 0.5 }}
+                        onClick={(e) => { e.stopPropagation(); handleToggleFolder(category); }}
+                      >
+                        {isExpanded ? <ArrowDropDownIcon fontSize="small" /> : <ArrowRightIcon fontSize="small" />}
+                      </IconButton>
+                    </Box>
+                  </Box>
+                  {/* If category expanded, show immediate folders and direct files */}
+                  {isExpanded && (
+                    <Box sx={{ pl: 4, display: 'flex', flexDirection: 'column', gap: 0.5 }}>
+                      {immediateFolders.map(folder => {
+                        const isSel = selected.includes(folder.id);
+                        const isFldExp = expandedFolders.includes(folder.id);
+                        const childFiles = flatItems.filter(it => it.type === 'file' && it.path.slice(0, folder.path.length).join('/') === folder.id);
+                        return (
+                          <Box key={folder.id}>
+                            <Box sx={{ display: 'flex', alignItems: 'center', padding: '6px 10px', borderRadius: '4px', backgroundColor: isSel ? 'rgba(33, 150, 243, 0.2)' : 'rgba(255, 255, 255, 0.05)', border: '1px solid', borderColor: isSel ? 'rgba(33, 150, 243, 0.5)' : 'rgba(255, 255, 255, 0.1)', cursor: 'pointer' }} onClick={() => handleSearchItemToggle(folder)}>
+                              <Checkbox checked={isSel} size="small" sx={{ padding: '2px' }} />
+                              <CategoryIcon sx={{ fontSize: 18, color: '#ffa726', marginRight: 1 }} />
+                              <Box sx={{ flex: 1 }}>
+                                <Box sx={{ fontSize: '0.875rem', fontWeight: 600, color: 'rgba(255,255,255,0.9)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{folder.name}</Box>
+                              </Box>
+                              <Box sx={{ fontSize: '0.75rem', color: 'rgba(255,255,255,0.7)', minWidth: 32, textAlign: 'right' }}>{childFiles.length} file{childFiles.length !== 1 ? 's' : ''}</Box>
+                              <IconButton size="small" onClick={e => { e.stopPropagation(); handleToggleFolder(folder.id); }} sx={{ ml: 1, p: 0.5 }}>{isFldExp ? <ArrowDropDownIcon fontSize="small" /> : <ArrowRightIcon fontSize="small" />}</IconButton>
+                            </Box>
+                            {isFldExp && (
+                              <Box sx={{ pl: 4, pt: 0.5, display: 'flex', flexDirection: 'column', gap: 0.5 }}>
+                                {childFiles.map(file => {
+                                  const isFileSelected = selected.includes(file.id);
+                                  return (
+                                    <Box key={file.id} sx={{ display: 'flex', alignItems: 'center', padding: '6px 10px', borderRadius: '4px', backgroundColor: isFileSelected ? 'rgba(33, 150, 243, 0.2)' : 'rgba(255, 255, 255, 0.05)', border: '1px solid', borderColor: isFileSelected ? 'rgba(33, 150, 243, 0.5)' : 'rgba(255, 255, 255, 0.1)' }} onClick={() => handleSearchItemToggle(file)}>
+                                      <Checkbox checked={isFileSelected} size="small" sx={{ padding: '2px' }} />
+                                      <SportsKabaddiIcon sx={{ fontSize: 18, color: '#42a5f5', marginRight: 1 }} />
+                                      <Box sx={{ flex: 1 }}>
+                                        <Box sx={{ fontSize: '0.875rem', fontWeight: 400, color: 'rgba(255,255,255,0.9)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{file.name}</Box>
+                                      </Box>
+                                    </Box>
+                                  );
+                                })}
+                              </Box>
+                            )}
+                          </Box>
+                        );
+                      })}
+                      {/* Direct files under category */}
+                      {directFiles.map(file => {
+                        const isFileSelected = selected.includes(file.id);
+                        return (
+                          <Box key={file.id} sx={{ display: 'flex', alignItems: 'center', padding: '6px 10px', borderRadius: '4px', backgroundColor: isFileSelected ? 'rgba(33, 150, 243, 0.2)' : 'rgba(255, 255, 255, 0.05)', border: '1px solid', borderColor: isFileSelected ? 'rgba(33, 150, 243, 0.5)' : 'rgba(255, 255, 255, 0.1)' }} onClick={() => handleSearchItemToggle(file)}>
+                            <Checkbox checked={isFileSelected} size="small" sx={{ padding: '2px' }} />
+                            <SportsKabaddiIcon sx={{ fontSize: 18, color: '#42a5f5', marginRight: 1 }} />
+                            <Box sx={{ flex: 1 }}>
+                              <Box sx={{ fontSize: '0.875rem', fontWeight: 400, color: 'rgba(255,255,255,0.9)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{file.name}</Box>
+                            </Box>
+                          </Box>
+                        );
+                      })}
+                    </Box>
+                  )}
+                </Box>
+              );
+            })}
           </Box>
         )}
       </Paper>
