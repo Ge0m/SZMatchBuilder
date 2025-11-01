@@ -77,6 +77,7 @@ export function processTeamGroups(characterData) {
  */
 function recalculateCharacterStatsForTeam(character, teamMatches, teamName) {
   const matchCount = teamMatches.length;
+  const activeMatchCount = teamMatches.filter(m => m.battleDuration && m.battleDuration > 0).length;
   
   // Aggregate stats from team-specific matches only
   const totalDamage = teamMatches.reduce((sum, m) => sum + (m.damageDone || 0), 0);
@@ -114,36 +115,37 @@ function recalculateCharacterStatsForTeam(character, teamMatches, teamName) {
   const losses = matchCount - wins;
   
   // Calculate averages
-  const avgDamage = Math.round(totalDamage / matchCount);
-  const avgTaken = Math.round(totalTaken / matchCount);
-  const avgHealth = Math.round(totalHealth / matchCount);
-  const avgBattleTime = Math.round((totalBattleTime / matchCount) * 10) / 10;
-  const avgHPGaugeValueMax = Math.round(totalHPGaugeValueMax / matchCount);
-  const avgSPM1 = Math.round((totalSPM1 / matchCount) * 10) / 10;
-  const avgSPM2 = Math.round((totalSPM2 / matchCount) * 10) / 10;
-  const avgEXA1 = Math.round((totalEXA1 / matchCount) * 10) / 10;
-  const avgEXA2 = Math.round((totalEXA2 / matchCount) * 10) / 10;
-  const avgUltimates = Math.round((totalUltimates / matchCount) * 10) / 10;
-  const avgEnergyBlasts = Math.round((totalEnergyBlasts / matchCount) * 10) / 10;
-  const avgCharges = Math.round((totalCharges / matchCount) * 10) / 10;
-  const avgSparking = Math.round((totalSparking / matchCount) * 10) / 10;
-  const avgGuards = Math.round((totalGuards / matchCount) * 10) / 10;
-  const avgRevengeCounters = Math.round((totalRevengeCounters / matchCount) * 10) / 10;
-  const avgSuperCounters = Math.round((totalSuperCounters / matchCount) * 10) / 10;
-  const avgZCounters = Math.round((totalZCounters / matchCount) * 10) / 10;
-  const avgThrows = Math.round((totalThrows / matchCount) * 10) / 10;
-  const avgLightningAttacks = Math.round((totalLightningAttacks / matchCount) * 10) / 10;
-  const avgVanishingAttacks = Math.round((totalVanishingAttacks / matchCount) * 10) / 10;
-  const avgDragonHoming = Math.round((totalDragonHoming / matchCount) * 10) / 10;
-  const avgSpeedImpacts = Math.round((totalSpeedImpacts / matchCount) * 10) / 10;
-  const avgSpeedImpactWins = Math.round((totalSpeedImpactWins / matchCount) * 10) / 10;
-  const avgDragonDashMileage = Math.round((totalDragonDashMileage / matchCount) * 10) / 10;
-  const avgMaxCombo = Math.round((totalMaxCombo / matchCount) * 10) / 10;
-  const avgMaxComboDamage = Math.round(totalMaxComboDamage / matchCount);
-  const avgKills = Math.round((totalKills / matchCount) * 10) / 10;
-  const avgDamageCaps = Math.round((totalDamageCaps / matchCount) * 10) / 10;
-  const avgDefensiveCaps = Math.round((totalDefensiveCaps / matchCount) * 10) / 10;
-  const avgUtilityCaps = Math.round((totalUtilityCaps / matchCount) * 10) / 10;
+  const denom = activeMatchCount > 0 ? activeMatchCount : matchCount;
+  const avgDamage = Math.round(totalDamage / Math.max(denom, 1));
+  const avgTaken = Math.round(totalTaken / Math.max(denom, 1));
+  const avgHealth = Math.round(totalHealth / Math.max(denom, 1));
+  const avgBattleTime = Math.round((totalBattleTime / Math.max(denom, 1)) * 10) / 10;
+  const avgHPGaugeValueMax = Math.round(totalHPGaugeValueMax / Math.max(denom, 1));
+  const avgSPM1 = Math.round((totalSPM1 / Math.max(denom, 1)) * 10) / 10;
+  const avgSPM2 = Math.round((totalSPM2 / Math.max(denom, 1)) * 10) / 10;
+  const avgEXA1 = Math.round((totalEXA1 / Math.max(denom, 1)) * 10) / 10;
+  const avgEXA2 = Math.round((totalEXA2 / Math.max(denom, 1)) * 10) / 10;
+  const avgUltimates = Math.round((totalUltimates / Math.max(denom, 1)) * 10) / 10;
+  const avgEnergyBlasts = Math.round((totalEnergyBlasts / Math.max(denom, 1)) * 10) / 10;
+  const avgCharges = Math.round((totalCharges / Math.max(denom, 1)) * 10) / 10;
+  const avgSparking = Math.round((totalSparking / Math.max(denom, 1)) * 10) / 10;
+  const avgGuards = Math.round((totalGuards / Math.max(denom, 1)) * 10) / 10;
+  const avgRevengeCounters = Math.round((totalRevengeCounters / Math.max(denom, 1)) * 10) / 10;
+  const avgSuperCounters = Math.round((totalSuperCounters / Math.max(denom, 1)) * 10) / 10;
+  const avgZCounters = Math.round((totalZCounters / Math.max(denom, 1)) * 10) / 10;
+  const avgThrows = Math.round((totalThrows / Math.max(denom, 1)) * 10) / 10;
+  const avgLightningAttacks = Math.round((totalLightningAttacks / Math.max(denom, 1)) * 10) / 10;
+  const avgVanishingAttacks = Math.round((totalVanishingAttacks / Math.max(denom, 1)) * 10) / 10;
+  const avgDragonHoming = Math.round((totalDragonHoming / Math.max(denom, 1)) * 10) / 10;
+  const avgSpeedImpacts = Math.round((totalSpeedImpacts / Math.max(denom, 1)) * 10) / 10;
+  const avgSpeedImpactWins = Math.round((totalSpeedImpactWins / Math.max(denom, 1)) * 10) / 10;
+  const avgDragonDashMileage = Math.round((totalDragonDashMileage / Math.max(denom, 1)) * 10) / 10;
+  const avgMaxCombo = Math.round((totalMaxCombo / Math.max(denom, 1)) * 10) / 10;
+  const avgMaxComboDamage = Math.round(totalMaxComboDamage / Math.max(denom, 1));
+  const avgKills = Math.round((totalKills / Math.max(denom, 1)) * 10) / 10;
+  const avgDamageCaps = Math.round((totalDamageCaps / Math.max(denom, 1)) * 10) / 10;
+  const avgDefensiveCaps = Math.round((totalDefensiveCaps / Math.max(denom, 1)) * 10) / 10;
+  const avgUtilityCaps = Math.round((totalUtilityCaps / Math.max(denom, 1)) * 10) / 10;
   
   // Calculate derived stats
   const dps = Math.round((avgDamage / Math.max(avgBattleTime, 0.1)) * 10) / 10;
@@ -159,7 +161,7 @@ function recalculateCharacterStatsForTeam(character, teamMatches, teamName) {
     (dps / 1000) * 25 +
     (healthRetention / 100) * 15
   );
-  const experienceMultiplier = Math.min(1.25, 1.0 + (matchCount - 1) * (0.25 / 11));
+  const experienceMultiplier = Math.min(1.25, 1.0 + ((activeMatchCount > 0 ? activeMatchCount : matchCount) - 1) * (0.25 / 11));
   const combatPerformanceScore = baseScore * experienceMultiplier;
   
   // Return character with recalculated stats for this team only
@@ -167,6 +169,7 @@ function recalculateCharacterStatsForTeam(character, teamMatches, teamName) {
     ...character,
     primaryTeam: teamName,
     matchCount,
+    activeMatchCount,
     wins,
     losses,
     matches: teamMatches,
@@ -330,7 +333,8 @@ function weightedAverage(characters, field, weightField) {
   
   characters.forEach(char => {
     const value = char[field];
-    const weight = char[weightField] || 0;
+    // Prefer activeMatchCount when available, then provided weightField, then matchCount
+    const weight = (char.activeMatchCount && char.activeMatchCount > 0) ? char.activeMatchCount : (char[weightField] || char.matchCount || 0);
     
     if (typeof value === 'number' && !isNaN(value) && weight > 0) {
       weightedSum += value * weight;
@@ -350,7 +354,8 @@ function weightedAverageTop5(top5Characters, field, weightField) {
   
   top5Characters.forEach(char => {
     const value = char[field];
-    const weight = char[weightField] || 0;
+    // Prefer activeMatchCount when available, then provided weightField, then matchCount
+    const weight = (char.activeMatchCount && char.activeMatchCount > 0) ? char.activeMatchCount : (char[weightField] || char.matchCount || 0);
     
     if (typeof value === 'number' && !isNaN(value) && weight > 0) {
       weightedSum += value * weight;

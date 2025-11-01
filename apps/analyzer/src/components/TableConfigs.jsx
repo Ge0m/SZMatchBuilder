@@ -814,7 +814,9 @@ export const prepareCharacterAveragesData = (aggregatedData) => {
     name: char.name || 'Unknown',
     primaryTeam: char.primaryTeam || 'Unknown',
     primaryAIStrategy: char.primaryAIStrategy || 'Unknown',
-    matchCount: char.matchCount || 0,
+  matchCount: char.matchCount || 0,
+  // Number of matches with non-zero battle time
+  activeMatchCount: char.activeMatchCount || 0,
     
     // Combat Performance
     avgDamage: Math.round(char.avgDamage || 0),

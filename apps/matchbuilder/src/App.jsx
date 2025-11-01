@@ -605,7 +605,37 @@ const MatchBuilder = () => {
     try {
       const response = await fetch("capsules.csv");
       const text = await response.text();
-      const lines = text.split("\n");
+      // Split CSV into rows while respecting quoted newlines.
+      // Build rows by scanning characters and toggling inQuotes when encountering unescaped quotes.
+      const rows = [];
+      let cur = '';
+      let inQuotes = false;
+      for (let i = 0; i < text.length; i++) {
+        const ch = text[i];
+        // handle CR (ignore)
+        if (ch === '\r') continue;
+        if (ch === '"') {
+          // handle escaped double-quote ""
+          const next = text[i + 1];
+          if (next === '"') {
+            // keep escaped quote pair as two quotes inside field
+            cur += '""';
+            i++; // skip next
+            continue;
+          }
+          inQuotes = !inQuotes;
+          cur += '"';
+          continue;
+        }
+        if (ch === '\n' && !inQuotes) {
+          rows.push(cur);
+          cur = '';
+          continue;
+        }
+        cur += ch;
+      }
+      if (cur !== '') rows.push(cur);
+      const lines = rows;
       const caps = [];
       const costs = [];
       const ai = [];
@@ -633,8 +663,9 @@ const MatchBuilder = () => {
       };
 
       for (let i = 1; i < lines.length; i++) {
-        const line = lines[i].trim();
-        if (!line) continue;
+        // do not aggressively trim the whole line because effect fields may include intentional leading/trailing whitespace/newlines
+        const line = lines[i];
+        if (!line || line.trim() === '') continue;
         const parts = splitLine(line);
         if (parts.length >= 3) {
           const rawName = parts[0] || '';
@@ -1716,7 +1747,7 @@ const Combobox = ({
 
       {/* Tooltip portal */}
       {tooltipOpen && (typeof document !== 'undefined') ? createPortal(
-        <div ref={(el) => { try { tRefs.setFloating?.(el); } catch(e){} }} style={tFloatingStyles} className="z-[10000] pointer-events-none max-w-xs text-sm text-slate-100 bg-slate-900 p-2 rounded shadow-lg">
+        <div ref={(el) => { try { tRefs.setFloating?.(el); } catch(e){} }} style={tFloatingStyles} className="z-[10000] pointer-events-none max-w-xs sm:max-w-sm md:max-w-lg lg:max-w-xl xl:max-w-2xl text-sm text-slate-100 bg-slate-900 p-2 rounded shadow-lg whitespace-pre-wrap">
           {tooltipContent}
         </div>,
         document.body
@@ -2213,9 +2244,11 @@ const CharacterSlot = ({
                         const EXPENSIVE_THRESHOLD = 10; // adjust as desired
                         // determine base color by cost
                         let baseClass = 'bg-amber-200 text-slate-800';
-                        if (cost === 1) baseClass = 'bg-amber-100 text-slate-800';
+                        if (cost <= 1) baseClass = 'bg-amber-100 text-slate-800';
                         else if (cost === 2) baseClass = 'bg-amber-200 text-slate-800';
-                        else if (cost >= 3) baseClass = 'bg-amber-300 text-slate-800';
+                        else if (cost === 3) baseClass = 'bg-amber-300 text-slate-800';
+                        else if (cost === 4) baseClass = 'bg-amber-400 text-slate-800';
+                        else if (cost >= 5) baseClass = 'bg-amber-500 text-slate-800';
                         // determine if we should show red: either cost meets expensive threshold OR character is over budget
                         const rulesetActive = !!(ruleset && ruleset.scope && ruleset.scope !== 'none');
                         const showOver = (rulesetActive && over > 0) || (cost >= EXPENSIVE_THRESHOLD);
@@ -2232,9 +2265,11 @@ const CharacterSlot = ({
                         const over = sumUsed - total;
                         const EXPENSIVE_THRESHOLD = 10;
                         let baseClass = 'bg-amber-200 text-slate-800';
-                        if (cost === 1) baseClass = 'bg-amber-100 text-slate-800';
+                        if (cost <= 1) baseClass = 'bg-amber-100 text-slate-800';
                         else if (cost === 2) baseClass = 'bg-amber-200 text-slate-800';
-                        else if (cost >= 3) baseClass = 'bg-amber-300 text-slate-800';
+                        else if (cost === 3) baseClass = 'bg-amber-300 text-slate-800';
+                        else if (cost === 4) baseClass = 'bg-amber-400 text-slate-800';
+                        else if (cost >= 5) baseClass = 'bg-amber-500 text-slate-800';
                         const rulesetActive = !!(ruleset && ruleset.scope && ruleset.scope !== 'none');
                         const showOver = (rulesetActive && over > 0) || (cost >= EXPENSIVE_THRESHOLD);
                         const badgeClass = showOver ? 'bg-red-900 text-white' : baseClass;

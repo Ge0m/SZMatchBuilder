@@ -1,5 +1,13 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
+import Autocomplete from '@mui/material/Autocomplete';
+import MUITextField from '@mui/material/TextField';
 import './App.css';
+import BRDataSelector from './components/BRDataSelector.jsx';
+import { formatNumber } from './utils/formatters.js';
+import DataTable from './components/DataTable.jsx';
+import { prepareCharacterAveragesData, prepareMatchDetailsData, getCharacterAveragesTableConfig, getMatchDetailsTableConfig, getMetaTableConfig } from './components/TableConfigs.jsx';
+import { exportToExcel } from './utils/excelExport.js';
 import { 
   Trophy, 
   Swords, 
@@ -30,83 +38,18 @@ import {
   Filter,
   Download
 } from 'lucide-react';
-
-// Import new components
-import DataTable from './components/DataTable.jsx';
-import { 
-  getCharacterTableConfig,
-  getCharacterAveragesTableConfig,
-  getMatchDetailsTableConfig,
-  getPositionTableConfig, 
-  getMetaTableConfig,
-  prepareCharacterData,
-  prepareCharacterAveragesData,
-  prepareMatchDetailsData,
-  preparePositionData,
-  prepareMetaData
-} from './components/TableConfigs.jsx';
-import { exportToExcel } from './utils/excelExport.js';
-
-// Dynamically import all JSON files in BR_Data
-const dataFiles = import.meta.glob('../BR_Data/*.json', { eager: true });
-// Import characters.csv for key-to-name mapping
+// Reference data CSVs (raw imports)
 import charactersCSV from '../referencedata/characters.csv?raw';
-// Import capsules.csv for equipment analysis
 import capsulesCSV from '../referencedata/capsules.csv?raw';
-
-// Helper functions for styling and data visualization
-
-// Robust statistics helpers
-function median(arr) {
-  const sorted = [...arr].sort((a, b) => a - b);
-  const mid = Math.floor(sorted.length / 2);
-  return sorted.length % 2 !== 0
-    ? sorted[mid]
-    : (sorted[mid - 1] + sorted[mid]) / 2;
-}
-
-function quantile(arr, q) {
-  const sorted = [...arr].sort((a, b) => a - b);
-  const pos = (sorted.length - 1) * q;
-  const base = Math.floor(pos);
-  const rest = pos - base;
-  if (sorted[base + 1] !== undefined) {
-    return sorted[base] + rest * (sorted[base + 1] - sorted[base]);
-  } else {
-    return sorted[base];
-  }
-}
-
-function iqr(arr) {
-  return quantile(arr, 0.75) - quantile(arr, 0.25);
-}
-
-// Assign performance level using median and IQR
-function getPerformanceLevel(value, allValues) {
-  if (!Array.isArray(allValues) || allValues.length < 2) return 'average';
-  const med = median(allValues);
-  const q1 = quantile(allValues, 0.25);
-  const q3 = quantile(allValues, 0.75);
-  const iqrVal = q3 - q1;
-  // Define robust thresholds
-  if (value >= q3 + 1.5 * iqrVal) return 'excellent';
-  if (value >= q3) return 'good';
-  if (value >= med) return 'average';
-  if (value >= q1) return 'below-average';
-  return 'poor';
-}
-
-function formatNumber(num) {
-  if (num >= 1000000) return (num / 1000000).toFixed(1) + 'M';
-  if (num >= 1000) return (num / 1000).toFixed(1) + 'K';
-  return num.toString();
-}
-
+// Preload reference JSON files shipped with the analyzer (Vite import.meta.glob)
+// Each entry may be a module object; code uses module.default || module
+const dataFiles = import.meta.glob('../BR_Data/*.json', { eager: true });
+// Small stat bar used in the match panels
 function StatBar({ value, maxValue, displayValue, type = 'damage', isInverse = false, label = '', icon: Icon = Target, darkMode = false }) {
   const percentage = Math.min((value / maxValue) * 100, 100);
   const displayPercentage = isInverse ? 100 - percentage : percentage;
   const actualDisplayValue = displayValue !== undefined ? displayValue : value;
-  
+
   const getColorClass = () => {
     switch (type) {
       case 'damage': return 'bg-red-500';
@@ -118,7 +61,7 @@ function StatBar({ value, maxValue, displayValue, type = 'damage', isInverse = f
       default: return 'bg-gray-500';
     }
   };
-  
+
   return (
     <div className={`p-3 rounded-lg ${darkMode ? 'bg-gray-700' : 'bg-gray-50'}`}>
       <div className="flex items-center gap-2 mb-2">
@@ -680,6 +623,8 @@ function getPositionBasedData(files, charMap, capsuleMap = {}) {
         positionStats[position].characters[characterName] = {
           name: characterName,
           matchCount: 0,
+          // activeMatchCount counts matches where battleTime > 0
+          activeMatchCount: 0,
           totalDamage: 0,
           totalTaken: 0,
           totalHealth: 0,
@@ -697,11 +642,16 @@ function getPositionBasedData(files, charMap, capsuleMap = {}) {
       }
       
       const charData = positionStats[position].characters[characterName];
+      // Always increment visible match count
       charData.matchCount++;
+      // Only count as an "active" match if battleTime > 0
+      if (stats.battleTime && stats.battleTime > 0) {
+        charData.activeMatchCount += 1;
+        charData.totalBattleTime += stats.battleTime;
+      }
       charData.totalDamage += stats.damageDone;
       charData.totalTaken += stats.damageTaken;
       charData.totalHealth += stats.hPGaugeValue;
-      charData.totalBattleTime += stats.battleTime;
       charData.totalSpecialMoves += stats.specialMovesUsed;
       charData.totalUltimates += stats.ultimatesUsed;
       charData.totalSkills += stats.skillsUsed;
@@ -768,7 +718,10 @@ function getPositionBasedData(files, charMap, capsuleMap = {}) {
       charData.totalDamage += stats.damageDone;
       charData.totalTaken += stats.damageTaken;
       charData.totalHealth += stats.hPGaugeValue;
-      charData.totalBattleTime += stats.battleTime;
+      // Only include battleTime in totals if it's > 0. This keeps averages consistent when excluding zero-duration matches.
+      if (stats.battleTime && stats.battleTime > 0) {
+        charData.totalBattleTime += stats.battleTime;
+      }
       charData.totalSpecialMoves += stats.specialMovesUsed;
       charData.totalUltimates += stats.ultimatesUsed;
       charData.totalSkills += stats.skillsUsed;
@@ -836,23 +789,27 @@ function getPositionBasedData(files, charMap, capsuleMap = {}) {
   Object.keys(positionStats).forEach(position => {
     const posData = positionStats[position];
     posData.sortedCharacters = Object.values(posData.characters)
-      .map(char => ({
-        ...char,
-        avgDamage: char.totalDamage / char.matchCount,
-        avgTaken: char.totalTaken / char.matchCount,
-        avgHealth: char.totalHealth / char.matchCount,
-        avgBattleTime: char.totalBattleTime / char.matchCount,
-        avgSpecialMoves: char.totalSpecialMoves / char.matchCount,
-        avgUltimates: char.totalUltimates / char.matchCount,
-        avgSkills: char.totalSkills / char.matchCount,
-        avgSparking: char.totalSparking / char.matchCount,
-        avgCharges: char.totalCharges / char.matchCount,
-        avgGuards: char.totalGuards / char.matchCount,
-        avgEnergyBlasts: char.totalEnergyBlasts / char.matchCount,
-        avgComboNum: char.totalComboNum / char.matchCount,
-        avgComboDamage: char.totalComboDamage / char.matchCount,
-        damageEfficiency: char.totalDamage / Math.max(char.totalTaken, 1)
-      }))
+      .map(char => {
+        // Use activeMatchCount if available (exclude zero battleTime matches), fallback to matchCount
+        const denom = (char.activeMatchCount && char.activeMatchCount > 0) ? char.activeMatchCount : char.matchCount || 1;
+        return ({
+          ...char,
+          avgDamage: char.totalDamage / denom,
+          avgTaken: char.totalTaken / denom,
+          avgHealth: char.totalHealth / denom,
+          avgBattleTime: char.totalBattleTime / denom,
+          avgSpecialMoves: char.totalSpecialMoves / denom,
+          avgUltimates: char.totalUltimates / denom,
+          avgSkills: char.totalSkills / denom,
+          avgSparking: char.totalSparking / denom,
+          avgCharges: char.totalCharges / denom,
+          avgGuards: char.totalGuards / denom,
+          avgEnergyBlasts: char.totalEnergyBlasts / denom,
+          avgComboNum: char.totalComboNum / denom,
+          avgComboDamage: char.totalComboDamage / denom,
+          damageEfficiency: char.totalTaken > 0 ? (char.totalDamage / char.totalTaken) : char.totalDamage
+        });
+      })
       .sort((a, b) => b.avgDamage - a.avgDamage);
   });
   
@@ -938,6 +895,8 @@ function getAggregatedCharacterData(files, charMap, capsuleMap = {}, aiStrategie
           totalSpeedImpactWins: 0,
           totalSparkingCombo: 0,
           matchCount: 0,
+          // activeMatchCount excludes matches with zero battleTime
+          activeMatchCount: 0,
           // Build & Equipment tracking
           totalCapsuleCost: 0,
           totalDamageCaps: 0,
@@ -1000,6 +959,9 @@ function getAggregatedCharacterData(files, charMap, capsuleMap = {}, aiStrategie
       charData.totalSpeedImpactWins += stats.speedImpactWins;
       charData.totalSparkingCombo += stats.sparkingComboCount;
       charData.matchCount += 1;
+      if (stats.battleTime && stats.battleTime > 0) {
+        charData.activeMatchCount += 1;
+      }
       
       // Build & Equipment tracking
       charData.totalCapsuleCost += stats.totalCapsuleCost || 0;
@@ -1268,45 +1230,45 @@ function getAggregatedCharacterData(files, charMap, capsuleMap = {}, aiStrategie
       aiStrategiesUsed: aiStrategiesArray,
       primaryTeam,
       primaryAIStrategy,
-      avgDamage: Math.round(char.totalDamage / char.matchCount),
-      avgTaken: Math.round(char.totalTaken / char.matchCount),
-      avgHealth: Math.round(char.totalHealth / char.matchCount),
-      avgBattleTime: Math.round((char.totalBattleTime / char.matchCount) * 10) / 10,
-      avgHPGaugeValueMax: Math.round(char.totalHPGaugeValueMax / char.matchCount),
-      avgSpecial: Math.round((char.totalSpecial / char.matchCount) * 10) / 10,
-      avgUltimates: Math.round((char.totalUltimates / char.matchCount) * 10) / 10,
-      avgSkills: Math.round((char.totalSkills / char.matchCount) * 10) / 10,
-      avgKills: Math.round((char.totalKills / char.matchCount) * 10) / 10,
+      // Use activeMatchCount (non-zero battleTime) for all averages when available
+      _activeMatches: char.activeMatchCount || 0,
+      avgDamage: Math.round(char.totalDamage / (char.activeMatchCount > 0 ? char.activeMatchCount : char.matchCount)),
+      avgTaken: Math.round(char.totalTaken / (char.activeMatchCount > 0 ? char.activeMatchCount : char.matchCount)),
+      avgHealth: Math.round(char.totalHealth / (char.activeMatchCount > 0 ? char.activeMatchCount : char.matchCount)),
+      avgBattleTime: Math.round((char.totalBattleTime / (char.activeMatchCount > 0 ? char.activeMatchCount : char.matchCount)) * 10) / 10,
+      avgHPGaugeValueMax: Math.round(char.totalHPGaugeValueMax / (char.activeMatchCount > 0 ? char.activeMatchCount : char.matchCount)),
+  avgSpecial: Math.round((char.totalSpecial / (char.activeMatchCount > 0 ? char.activeMatchCount : char.matchCount)) * 10) / 10,
+      avgSkills: Math.round((char.totalSkills / (char.activeMatchCount > 0 ? char.activeMatchCount : char.matchCount)) * 10) / 10,
+      avgKills: Math.round((char.totalKills / (char.activeMatchCount > 0 ? char.activeMatchCount : char.matchCount)) * 10) / 10,
       // Survival & Health averages
-      survivalRate: Math.round((char.survivalCount / char.matchCount) * 1000) / 10, // % of matches survived
-      avgSparking: Math.round((char.totalSparking / char.matchCount) * 10) / 10,
-      avgCharges: Math.round((char.totalCharges / char.matchCount) * 10) / 10,
-      avgGuards: Math.round((char.totalGuards / char.matchCount) * 10) / 10,
-      avgEnergyBlasts: Math.round((char.totalEnergyBlasts / char.matchCount) * 10) / 10,
-      avgZCounters: Math.round((char.totalZCounters / char.matchCount) * 10) / 10,
-      avgSuperCounters: Math.round((char.totalSuperCounters / char.matchCount) * 10) / 10,
-      avgRevengeCounters: Math.round((char.totalRevengeCounters / char.matchCount) * 10) / 10,
+      survivalRate: Math.round((char.survivalCount / (char.activeMatchCount > 0 ? char.activeMatchCount : char.matchCount)) * 1000) / 10, // % of matches survived
+      avgSparking: Math.round((char.totalSparking / (char.activeMatchCount > 0 ? char.activeMatchCount : char.matchCount)) * 10) / 10,
+      avgCharges: Math.round((char.totalCharges / (char.activeMatchCount > 0 ? char.activeMatchCount : char.matchCount)) * 10) / 10,
+      avgGuards: Math.round((char.totalGuards / (char.activeMatchCount > 0 ? char.activeMatchCount : char.matchCount)) * 10) / 10,
+      avgEnergyBlasts: Math.round((char.totalEnergyBlasts / (char.activeMatchCount > 0 ? char.activeMatchCount : char.matchCount)) * 10) / 10,
+      avgZCounters: Math.round((char.totalZCounters / (char.activeMatchCount > 0 ? char.activeMatchCount : char.matchCount)) * 10) / 10,
+      avgSuperCounters: Math.round((char.totalSuperCounters / (char.activeMatchCount > 0 ? char.activeMatchCount : char.matchCount)) * 10) / 10,
+      avgRevengeCounters: Math.round((char.totalRevengeCounters / (char.activeMatchCount > 0 ? char.activeMatchCount : char.matchCount)) * 10) / 10,
       // Special Abilities - detailed blast averages
-      avgSPM1: Math.round((char.totalSPM1 / char.matchCount) * 10) / 10,
-      avgSPM2: Math.round((char.totalSPM2 / char.matchCount) * 10) / 10,
-      avgEXA1: Math.round((char.totalEXA1 / char.matchCount) * 10) / 10,
-      avgEXA2: Math.round((char.totalEXA2 / char.matchCount) * 10) / 10,
-      avgDragonDashMileage: Math.round((char.totalDragonDashMileage / char.matchCount) * 10) / 10,
-      // Combat Performance averages
-      avgMaxCombo: Math.round((char.maxComboNumTotal / char.matchCount) * 10) / 10,
-      avgMaxComboDamage: Math.round(char.maxComboDamageTotal / char.matchCount),
-      avgThrows: Math.round((char.totalThrows / char.matchCount) * 10) / 10,
-      avgLightningAttacks: Math.round((char.totalLightningAttacks / char.matchCount) * 10) / 10,
-      avgVanishingAttacks: Math.round((char.totalVanishingAttacks / char.matchCount) * 10) / 10,
-      avgDragonHoming: Math.round((char.totalDragonHoming / char.matchCount) * 10) / 10,
-      avgSpeedImpacts: Math.round((char.totalSpeedImpacts / char.matchCount) * 10) / 10,
-      avgSpeedImpactWins: Math.round((char.totalSpeedImpactWins / char.matchCount) * 10) / 10,
-      avgSparkingCombo: Math.round((char.totalSparkingCombo / char.matchCount) * 10) / 10,
-      // Build & Equipment averages
-      avgCapsuleCost: Math.round(char.totalCapsuleCost / char.matchCount),
-      avgDamageCaps: Math.round((char.totalDamageCaps / char.matchCount) * 10) / 10,
-      avgDefensiveCaps: Math.round((char.totalDefensiveCaps / char.matchCount) * 10) / 10,
-      avgUtilityCaps: Math.round((char.totalUtilityCaps / char.matchCount) * 10) / 10,
+    avgSPM1: Math.round((char.totalSPM1 / (char.activeMatchCount > 0 ? char.activeMatchCount : char.matchCount)) * 10) / 10,
+  avgSPM2: Math.round((char.totalSPM2 / (char.activeMatchCount > 0 ? char.activeMatchCount : char.matchCount)) * 10) / 10,
+  avgEXA1: Math.round((char.totalEXA1 / (char.activeMatchCount > 0 ? char.activeMatchCount : char.matchCount)) * 10) / 10,
+  avgEXA2: Math.round((char.totalEXA2 / (char.activeMatchCount > 0 ? char.activeMatchCount : char.matchCount)) * 10) / 10,
+  avgUltimates: Math.round((char.totalUltimates / (char.activeMatchCount > 0 ? char.activeMatchCount : char.matchCount)) * 10) / 10,
+  avgDragonDashMileage: Math.round((char.totalDragonDashMileage / (char.activeMatchCount > 0 ? char.activeMatchCount : char.matchCount)) * 10) / 10,
+  avgMaxComboDamage: Math.round(char.maxComboDamageTotal / (char.activeMatchCount > 0 ? char.activeMatchCount : char.matchCount)),
+  avgThrows: Math.round((char.totalThrows / (char.activeMatchCount > 0 ? char.activeMatchCount : char.matchCount)) * 10) / 10,
+  avgLightningAttacks: Math.round((char.totalLightningAttacks / (char.activeMatchCount > 0 ? char.activeMatchCount : char.matchCount)) * 10) / 10,
+  avgVanishingAttacks: Math.round((char.totalVanishingAttacks / (char.activeMatchCount > 0 ? char.activeMatchCount : char.matchCount)) * 10) / 10,
+  avgDragonHoming: Math.round((char.totalDragonHoming / (char.activeMatchCount > 0 ? char.activeMatchCount : char.matchCount)) * 10) / 10,
+  avgSpeedImpacts: Math.round((char.totalSpeedImpacts / (char.activeMatchCount > 0 ? char.activeMatchCount : char.matchCount)) * 10) / 10,
+  avgSpeedImpactWins: Math.round((char.totalSpeedImpactWins / (char.activeMatchCount > 0 ? char.activeMatchCount : char.matchCount)) * 10) / 10,
+  avgSparkingCombo: Math.round((char.totalSparkingCombo / (char.activeMatchCount > 0 ? char.activeMatchCount : char.matchCount)) * 10) / 10,
+  // Build & Equipment averages
+  avgCapsuleCost: Math.round(char.totalCapsuleCost / (char.activeMatchCount > 0 ? char.activeMatchCount : char.matchCount)),
+  avgDamageCaps: Math.round((char.totalDamageCaps / (char.activeMatchCount > 0 ? char.activeMatchCount : char.matchCount)) * 10) / 10,
+  avgDefensiveCaps: Math.round((char.totalDefensiveCaps / (char.activeMatchCount > 0 ? char.activeMatchCount : char.matchCount)) * 10) / 10,
+  avgUtilityCaps: Math.round((char.totalUtilityCaps / (char.activeMatchCount > 0 ? char.activeMatchCount : char.matchCount)) * 10) / 10,
       // Most used build archetype
       primaryBuildArchetype: Object.keys(char.buildArchetypes).length > 0
         ? Object.keys(char.buildArchetypes).reduce((a, b) => 
@@ -1337,15 +1299,19 @@ function getAggregatedCharacterData(files, charMap, capsuleMap = {}, aiStrategie
     
     // Experience multiplier based on matches played (1.0 to 1.25x, maxed at 12 matches)
     // Characters with more matches get slightly higher weight
-    const experienceMultiplier = Math.min(1.25, 1.0 + (char.matchCount - 1) * (0.25 / 11));
+  // Use active matches (non-zero battleTime) for experience weighting when available
+  const experienceMatches = (char.activeMatchCount && char.activeMatchCount > 0) ? char.activeMatchCount : char.matchCount;
+  const experienceMultiplier = Math.min(1.25, 1.0 + (experienceMatches - 1) * (0.25 / 11));
     
     // Final combat performance score
     const combatPerformanceScore = baseScore * experienceMultiplier;
     
     // Calculate win rate from matches array
-    const totalMatches = char.matches ? char.matches.length : char.matchCount;
-    const wins = char.matches ? char.matches.filter(m => m.won).length : 0;
-    const winRate = totalMatches > 0 ? Math.round((wins / totalMatches) * 1000) / 10 : 0;
+  // For win rate, prefer counting only active matches (non-zero battleTime)
+  const totalMatches = char.matches ? char.matches.length : char.matchCount;
+  const activeMatches = char.matches ? char.matches.filter(m => m.battleTime && m.battleTime > 0) : [];
+  const winsActive = activeMatches.length > 0 ? activeMatches.filter(m => m.won).length : (char.matches ? char.matches.filter(m => m.won).length : 0);
+  const winRate = activeMatches.length > 0 ? Math.round((winsActive / activeMatches.length) * 1000) / 10 : (totalMatches > 0 ? Math.round(((char.matches ? char.matches.filter(m => m.won).length : 0) / totalMatches) * 1000) / 10 : 0);
     
     // Calculate speed impact win rate (wins / impacts * 100)
     const speedImpactWinRate = char.totalSpeedImpacts > 0 
@@ -1647,12 +1613,14 @@ function getTeamAggregatedData(files, charMap, capsuleMap = {}) {
         const totalHealthRemaining = matches.reduce((sum, match) => sum + match.healthRemaining, 0);
         const totalHealthMax = matches.reduce((sum, match) => sum + match.healthMax, 0);
         const matchCount = matches.length;
+        const activeMatchCount = matches.filter(m => m.battleDuration && m.battleDuration > 0).length;
+        const denom = activeMatchCount > 0 ? activeMatchCount : matchCount;
         
-        const avgDamageDealt = Math.round(totalDamageDealt / matchCount);
-        const avgDamageTaken = Math.round(totalDamageTaken / matchCount);
-        const avgBattleDuration = totalBattleDuration / matchCount;
-        const avgHealthRemaining = totalHealthRemaining / matchCount;
-        const avgHealthMax = totalHealthMax / matchCount;
+        const avgDamageDealt = Math.round(totalDamageDealt / Math.max(denom, 1));
+        const avgDamageTaken = Math.round(totalDamageTaken / Math.max(denom, 1));
+        const avgBattleDuration = totalBattleDuration / Math.max(denom, 1);
+        const avgHealthRemaining = totalHealthRemaining / Math.max(denom, 1);
+        const avgHealthMax = totalHealthMax / Math.max(denom, 1);
         
         const damageEfficiency = totalDamageTaken > 0 ? 
           Math.round((totalDamageDealt / totalDamageTaken) * 100) / 100 : 
@@ -1669,8 +1637,8 @@ function getTeamAggregatedData(files, charMap, capsuleMap = {}) {
           (healthRetention) * 15                   // Health retention weight: 15%
         );
         
-        // Experience multiplier based on matches played (1.0 to 1.25x, maxed at 12 matches)
-        const experienceMultiplier = Math.min(1.25, 1.0 + (matchCount - 1) * (0.25 / 11));
+        // Experience multiplier based on matches played (prefer active matches)
+        const experienceMultiplier = Math.min(1.25, 1.0 + ((activeMatchCount > 0 ? activeMatchCount : matchCount) - 1) * (0.25 / 11));
         const performanceScore = Math.round((baseScore * experienceMultiplier) * 100) / 100;
         
         team.characterAverages[charName] = {
@@ -1681,6 +1649,7 @@ function getTeamAggregatedData(files, charMap, capsuleMap = {}) {
           avgHealthRetention: healthRetention,
           performanceScore,
           matchesPlayed: matchCount,
+          activeMatchesPlayed: activeMatchCount,
           usageRate: Math.round((matchCount / team.matches) * 100 * 10) / 10
         };
       }
@@ -1720,8 +1689,12 @@ function getTeamStats(teamRecords, charMap, capsuleMap = {}) {
 
 export default function App() {
   const [mode, setMode] = useState('reference');
+  const [selectedFilePath, setSelectedFilePath] = useState(null);
   const [selectedFile, setSelectedFile] = useState(null);
   const [fileContent, setFileContent] = useState(null);
+  // Separate state for the header match-analysis selector so we don't override global fileContent
+  const [analysisSelectedFilePath, setAnalysisSelectedFilePath] = useState(null);
+  const [analysisFileContent, setAnalysisFileContent] = useState(null);
   const [viewType, setViewType] = useState('single');
   const [manualFiles, setManualFiles] = useState([]);
   const [expandedRows, setExpandedRows] = useState({}); // Expanded state for character rows
@@ -1746,73 +1719,128 @@ export default function App() {
   const [aiStrategySearchInput, setAIStrategySearchInput] = useState('');
 
   // Combobox state for searchable file selection
-  const [comboboxInput, setComboboxInput] = useState(selectedFile || '');
+  // Remove comboboxInput usage of selectedFile (legacy)
+  const [comboboxInput, setComboboxInput] = useState('');
   const [comboboxOpen, setComboboxOpen] = useState(false);
   const [comboboxHighlightedIndex, setComboboxHighlightedIndex] = useState(-1);
+  const [headerFileInput, setHeaderFileInput] = useState('');
+  const headerInputRef = useRef(null);
+  const headerDropdownRef = useRef(null);
+  const [headerHighlightedIndex, setHeaderHighlightedIndex] = useState(-1);
+  const [headerDropdownOpen, setHeaderDropdownOpen] = useState(false);
+  const [headerDropdownPos, setHeaderDropdownPos] = useState(null);
+
+  // Close dropdown on outside click
+  useEffect(() => {
+    function onDocClick(e) {
+      if (headerDropdownRef.current && !headerDropdownRef.current.contains(e.target) && headerInputRef.current && !headerInputRef.current.contains(e.target)) {
+        setHeaderDropdownOpen(false);
+        setHeaderHighlightedIndex(-1);
+      }
+    }
+    document.addEventListener('mousedown', onDocClick);
+    return () => document.removeEventListener('mousedown', onDocClick);
+  }, []);
+
+  // Update dropdown position to float above layout
+  const updateHeaderDropdownPos = () => {
+    const el = headerInputRef.current;
+    if (!el) return;
+    const rect = el.getBoundingClientRect();
+    const newPos = { top: rect.bottom + window.scrollY, left: rect.left + window.scrollX, width: rect.width };
+    setHeaderDropdownPos(prev => {
+      if (!prev) return newPos;
+      if (prev.top === newPos.top && prev.left === newPos.left && prev.width === newPos.width) return prev;
+      return newPos;
+    });
+  };
+
+  useEffect(() => {
+    if (!headerDropdownOpen) return;
+    updateHeaderDropdownPos();
+    const onMove = () => updateHeaderDropdownPos();
+    window.addEventListener('resize', onMove);
+    window.addEventListener('scroll', onMove, true);
+    return () => {
+      window.removeEventListener('resize', onMove);
+      window.removeEventListener('scroll', onMove, true);
+    };
+  }, [headerDropdownOpen, headerFileInput]);
+
+  // Keyboard navigation for header combobox
+  const handleHeaderKeyDown = (e, options) => {
+    if (!options || options.length === 0) return;
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      setHeaderDropdownOpen(true);
+      setHeaderHighlightedIndex(prev => Math.min(prev + 1, options.length - 1));
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      setHeaderHighlightedIndex(prev => Math.max(prev - 1, 0));
+    } else if (e.key === 'Enter') {
+      e.preventDefault();
+      const idx = headerHighlightedIndex >= 0 ? headerHighlightedIndex : 0;
+      const sel = options[idx];
+      if (sel) {
+        handleHeaderFileSelect(sel.name || sel);
+        setHeaderFileInput((sel.name || sel).replace(/\.json$/i, ''));
+        setHeaderDropdownOpen(false);
+        setHeaderHighlightedIndex(-1);
+      }
+    } else if (e.key === 'Escape') {
+      setHeaderDropdownOpen(false);
+      setHeaderHighlightedIndex(-1);
+    }
+  };
 
   const charMap = useMemo(() => parseCharacterCSV(charactersCSV), []);
   const { capsules: capsuleMap, aiStrategies } = useMemo(() => parseCapsules(capsulesCSV), []);
-  const fileNames = Object.keys(dataFiles).map((path) => path.split('/').pop());
 
-  // Aggregated data for reference mode
+
+  // Aggregated data for reference mode (single file only)
   const aggregatedData = useMemo(() => {
-    if (mode === 'reference' && (viewType === 'aggregated' || viewType === 'meta' || viewType === 'tables')) {
-      const allFiles = fileNames.map(fileName => {
-        const fullPath = Object.keys(dataFiles).find((p) => p.endsWith(fileName));
-        if (fullPath) {
-          const moduleContent = dataFiles[fullPath];
-          const actualContent = moduleContent.default || moduleContent;
-          return { name: fileName, content: actualContent };
-        }
-        return { name: fileName, error: 'Not found' };
-      });
-      return getAggregatedCharacterData(allFiles, charMap, capsuleMap, aiStrategies);
+    if (mode === 'reference' && (viewType === 'aggregated' || viewType === 'meta' || viewType === 'tables') && fileContent) {
+      // If fileContent is an array, use as is; if single file, wrap in array
+      const filesArr = Array.isArray(fileContent)
+        ? fileContent
+        : fileContent.error ? [] : [{ name: selectedFilePath ? selectedFilePath.join(' / ') : 'Selected File', content: fileContent }];
+      return getAggregatedCharacterData(filesArr, charMap, capsuleMap, aiStrategies);
     } else if (mode === 'manual' && (viewType === 'aggregated' || viewType === 'meta' || viewType === 'tables') && manualFiles.length > 0) {
       return getAggregatedCharacterData(manualFiles, charMap, capsuleMap, aiStrategies);
     }
     return [];
-  }, [mode, viewType, charMap, capsuleMap, aiStrategies, manualFiles]);
+  }, [mode, viewType, charMap, capsuleMap, aiStrategies, manualFiles, fileContent, selectedFilePath]);
 
-  // Position-based data for advanced analysis
+  // Position-based data for advanced analysis (single file only)
   const positionData = useMemo(() => {
-    if (mode === 'reference' && (viewType === 'aggregated' || viewType === 'meta' || viewType === 'tables')) {
-      const allFiles = fileNames.map(fileName => {
-        const fullPath = Object.keys(dataFiles).find((p) => p.endsWith(fileName));
-        if (fullPath) {
-          const moduleContent = dataFiles[fullPath];
-          const actualContent = moduleContent.default || moduleContent;
-          return { name: fileName, content: actualContent };
-        }
-        return { name: fileName, error: 'Not found' };
-      });
-      return getPositionBasedData(allFiles, charMap, capsuleMap);
+    if (mode === 'reference' && (viewType === 'aggregated' || viewType === 'meta' || viewType === 'tables') && fileContent) {
+      const filesArr = Array.isArray(fileContent)
+        ? fileContent
+        : fileContent.error ? [] : [{ name: selectedFilePath ? selectedFilePath.join(' / ') : 'Selected File', content: fileContent }];
+      return getPositionBasedData(filesArr, charMap, capsuleMap);
     } else if (mode === 'manual' && (viewType === 'aggregated' || viewType === 'meta' || viewType === 'tables') && manualFiles.length > 0) {
       return getPositionBasedData(manualFiles, charMap, capsuleMap);
     }
     return {};
-  }, [mode, viewType, charMap, capsuleMap, manualFiles]);
+  }, [mode, viewType, charMap, capsuleMap, manualFiles, fileContent, selectedFilePath]);
 
   // Team aggregated data for team rankings
   const teamAggregatedData = useMemo(() => {
-    if (mode === 'reference' && (viewType === 'aggregated' || viewType === 'meta' || viewType === 'tables' || viewType === 'teams')) {
-      const allFiles = fileNames.map(fileName => {
-        const fullPath = Object.keys(dataFiles).find((p) => p.endsWith(fileName));
-        if (fullPath) {
-          const moduleContent = dataFiles[fullPath];
-          const actualContent = moduleContent.default || moduleContent;
-          return { name: fileName, content: actualContent };
-        }
-        return { name: fileName, error: 'Not found' };
-      });
-      return getTeamAggregatedData(allFiles, charMap, capsuleMap);
+    if (mode === 'reference' && (viewType === 'aggregated' || viewType === 'meta' || viewType === 'tables' || viewType === 'teams') && fileContent) {
+      const filesArr = Array.isArray(fileContent)
+        ? fileContent
+        : fileContent.error ? [] : [{ name: selectedFilePath ? selectedFilePath.join(' / ') : 'Selected File', content: fileContent }];
+      return getTeamAggregatedData(filesArr, charMap, capsuleMap);
     } else if (mode === 'manual' && (viewType === 'aggregated' || viewType === 'meta' || viewType === 'tables' || viewType === 'teams') && manualFiles.length > 0) {
       return getTeamAggregatedData(manualFiles, charMap, capsuleMap);
     }
     return [];
-  }, [mode, viewType, charMap, capsuleMap, manualFiles]);
+  }, [mode, viewType, charMap, capsuleMap, manualFiles, fileContent, selectedFilePath]);
 
   // Filtered and sorted aggregated data based on search and filters
   const filteredAggregatedData = useMemo(() => {
+    if (!Array.isArray(aggregatedData)) return [];
+    
     let filtered = aggregatedData.map(char => {
       // Filter matches based on team and AI strategy filters
       let filteredMatches = [...char.matches];
@@ -1854,7 +1882,10 @@ export default function App() {
       const totalSuperCounters = filteredMatches.reduce((sum, m) => sum + (m.superCounterCount || 0), 0);
       const maxComboNumTotal = filteredMatches.reduce((sum, m) => sum + (m.maxComboNum || 0), 0);
       const maxComboDamageTotal = filteredMatches.reduce((sum, m) => sum + (m.maxComboDamage || 0), 0);
-      const matchCount = filteredMatches.length;
+  const matchCount = filteredMatches.length;
+  const activeMatches = filteredMatches.filter(m => m.battleTime && m.battleTime > 0);
+  const activeMatchCount = activeMatches.length;
+  const denom = activeMatchCount > 0 ? activeMatchCount : matchCount;
       
       // Recalculate teams and AI strategies used from filtered matches
       const teamsUsed = {};
@@ -1877,24 +1908,24 @@ export default function App() {
         ? aiStrategiesArray.reduce((a, b) => aiStrategiesUsed[a] > aiStrategiesUsed[b] ? a : b)
         : null;
       
-      // Calculate averages
-      const avgDamage = Math.round(totalDamage / matchCount);
-      const avgTaken = Math.round(totalTaken / matchCount);
-      const avgHealth = Math.round(totalHealth / matchCount);
-      const avgBattleTime = Math.round((totalBattleTime / matchCount) * 10) / 10;
-      const avgHPGaugeValueMax = Math.round(totalHPGaugeValueMax / matchCount);
-      const avgSpecial = Math.round((totalSpecial / matchCount) * 10) / 10;
-      const avgUltimates = Math.round((totalUltimates / matchCount) * 10) / 10;
-      const avgSkills = Math.round((totalSkills / matchCount) * 10) / 10;
-      const avgKills = Math.round((totalKills / matchCount) * 10) / 10;
-      const avgSparking = Math.round((totalSparking / matchCount) * 10) / 10;
-      const avgCharges = Math.round((totalCharges / matchCount) * 10) / 10;
-      const avgGuards = Math.round((totalGuards / matchCount) * 10) / 10;
-      const avgEnergyBlasts = Math.round((totalEnergyBlasts / matchCount) * 10) / 10;
-      const avgZCounters = Math.round((totalZCounters / matchCount) * 10) / 10;
-      const avgSuperCounters = Math.round((totalSuperCounters / matchCount) * 10) / 10;
-      const avgMaxCombo = Math.round((maxComboNumTotal / matchCount) * 10) / 10;
-      const avgMaxComboDamage = Math.round(maxComboDamageTotal / matchCount);
+  // Calculate averages (use denom which prefers active matches if present)
+  const avgDamage = Math.round(totalDamage / Math.max(denom, 1));
+  const avgTaken = Math.round(totalTaken / Math.max(denom, 1));
+  const avgHealth = Math.round(totalHealth / Math.max(denom, 1));
+  const avgBattleTime = Math.round((totalBattleTime / Math.max(denom, 1)) * 10) / 10;
+  const avgHPGaugeValueMax = Math.round(totalHPGaugeValueMax / Math.max(denom, 1));
+  const avgSpecial = Math.round((totalSpecial / Math.max(denom, 1)) * 10) / 10;
+  const avgUltimates = Math.round((totalUltimates / Math.max(denom, 1)) * 10) / 10;
+  const avgSkills = Math.round((totalSkills / Math.max(denom, 1)) * 10) / 10;
+  const avgKills = Math.round((totalKills / Math.max(denom, 1)) * 10) / 10;
+  const avgSparking = Math.round((totalSparking / Math.max(denom, 1)) * 10) / 10;
+  const avgCharges = Math.round((totalCharges / Math.max(denom, 1)) * 10) / 10;
+  const avgGuards = Math.round((totalGuards / Math.max(denom, 1)) * 10) / 10;
+  const avgEnergyBlasts = Math.round((totalEnergyBlasts / Math.max(denom, 1)) * 10) / 10;
+  const avgZCounters = Math.round((totalZCounters / Math.max(denom, 1)) * 10) / 10;
+  const avgSuperCounters = Math.round((totalSuperCounters / Math.max(denom, 1)) * 10) / 10;
+  const avgMaxCombo = Math.round((maxComboNumTotal / Math.max(denom, 1)) * 10) / 10;
+  const avgMaxComboDamage = Math.round(maxComboDamageTotal / Math.max(denom, 1));
       
       // Calculate DPS and efficiency
       const dps = Math.round((avgDamage / Math.max(avgBattleTime, 0.1)) * 10) / 10;
@@ -1909,13 +1940,14 @@ export default function App() {
         (healthRetention) * 15              // Health retention weight: 15%
       );
       
-      // Experience multiplier based on matches played (1.0 to 1.25x, maxed at 12 matches)
-      const experienceMultiplier = Math.min(1.25, 1.0 + (matchCount - 1) * (0.25 / 11));
+  // Experience multiplier based on matches played; prefer active matches for weighting
+  const experienceMultiplier = Math.min(1.25, 1.0 + ((activeMatchCount > 0 ? activeMatchCount : matchCount) - 1) * (0.25 / 11));
       const combatPerformanceScore = baseScore * experienceMultiplier;
       
       return {
         ...char,
         matchCount,
+        activeMatchCount,
         totalDamage,
         totalTaken,
         totalHealth,
@@ -1933,10 +1965,10 @@ export default function App() {
         totalSuperCounters,
         maxComboNumTotal,
         maxComboDamageTotal,
-        avgDamage,
-        avgTaken,
-        avgHealth,
-        avgBattleTime,
+  avgDamage,
+  avgTaken,
+  avgHealth,
+  avgBattleTime,
         avgHPGaugeValueMax,
         avgSpecial,
         avgUltimates,
@@ -1968,10 +2000,11 @@ export default function App() {
       );
     }
     
-    // Apply minimum/maximum matches filter
-    filtered = filtered.filter(char => 
-      char.matchCount >= minMatches && char.matchCount <= maxMatches
-    );
+    // Apply minimum/maximum matches filter (use activeMatchCount when available)
+    filtered = filtered.filter(char => {
+      const matchesForFilter = (char.activeMatchCount && char.activeMatchCount > 0) ? char.activeMatchCount : char.matchCount;
+      return matchesForFilter >= minMatches && matchesForFilter <= maxMatches;
+    });
     
     // Apply performance level filter
     if (performanceFilters.length > 0 && performanceFilters.length < 5) {
@@ -2068,10 +2101,7 @@ export default function App() {
     setExpandedRows({}); // Reset expanded state on file change
   };
 
-  // keep combobox input synced with selectedFile
-  useEffect(() => {
-    setComboboxInput(selectedFile || '');
-  }, [selectedFile]);
+
 
   const processFiles = (files) => {
     Promise.all(files.map(file => {
@@ -2093,10 +2123,8 @@ export default function App() {
       const validFiles = results.filter(f => !f.error);
       if (validFiles.length === 1) {
         setFileContent(validFiles[0].content);
-        setSelectedFile(validFiles[0].name);
       } else {
         setFileContent(null);
-        setSelectedFile(null);
       }
       setExpandedRows({});
     });
@@ -2136,9 +2164,41 @@ export default function App() {
     const file = manualFiles.find(f => f.name === fileName);
     if (file && !file.error) {
       setFileContent(file.content);
-      setSelectedFile(fileName);
+      // keep global selected path in sync for compatibility
+      setSelectedFilePath([file.name]);
+      // Also set analysis-specific state so the header/search-driven analysis area shows this file
+      setAnalysisFileContent(file.content);
+      setAnalysisSelectedFilePath([file.name]);
     }
     setExpandedRows({});
+  };
+
+  // Handler used by the Match Analysis header combobox to switch which file is being shown
+  const handleHeaderFileSelect = (fileName) => {
+    if (!fileName) return;
+    // Manual mode: pick from uploaded files
+    if (mode === 'manual') {
+      const file = manualFiles.find(f => f.name === fileName);
+      if (file && !file.error) {
+        // Only apply to the analysis area
+        setAnalysisFileContent(file.content);
+        setAnalysisSelectedFilePath([file.name]);
+        setExpandedRows({});
+      }
+      return;
+    }
+
+    // Reference mode: fileContent may be an array of {name, content}
+    if (Array.isArray(fileContent)) {
+      const f = fileContent.find(x => x.name === fileName);
+      if (f) {
+        // In reference mode other parts of the app expect a plain file content for single view
+        // Only apply to the analysis area
+        setAnalysisFileContent(f.content || f);
+        setAnalysisSelectedFilePath([f.name]);
+        setExpandedRows({});
+      }
+    }
   };
 
   // Handler for Excel export
@@ -2260,10 +2320,14 @@ export default function App() {
 
   // Find correct root for battleWinLose and characterRecord
   let battleWinLose, characterRecord;
-  if (fileContent && typeof fileContent === 'object') {
+  // analysisContent is the file used for the Match Analysis header selector; fall back to global fileContent
+  const analysisContent = analysisFileContent || fileContent;
+  const analysisSelectedPath = analysisSelectedFilePath || selectedFilePath;
+
+  if (analysisContent && typeof analysisContent === 'object') {
     // Handle TeamBattleResults format (current BR_Data structure)
-    if (fileContent.TeamBattleResults && typeof fileContent.TeamBattleResults === 'object') {
-      const teamBattleResults = fileContent.TeamBattleResults;
+    if (analysisContent.TeamBattleResults && typeof analysisContent.TeamBattleResults === 'object') {
+      const teamBattleResults = analysisContent.TeamBattleResults;
       // Check for both battleResult (lowercase) and BattleResults (capital)
       if (teamBattleResults.battleResult) {
         battleWinLose = teamBattleResults.battleResult.battleWinLose;
@@ -2278,8 +2342,8 @@ export default function App() {
       }
     }
     // Handle new format with teams array at the top
-    else if (fileContent.teams && Array.isArray(fileContent.teams) && fileContent.teams.length > 0) {
-      const firstTeam = fileContent.teams[0];
+    else if (analysisContent.teams && Array.isArray(analysisContent.teams) && analysisContent.teams.length > 0) {
+      const firstTeam = analysisContent.teams[0];
       if (firstTeam.BattleResults) {
         battleWinLose = firstTeam.BattleResults.battleWinLose;
         characterRecord = firstTeam.BattleResults.characterRecord;
@@ -2289,18 +2353,18 @@ export default function App() {
       }
     } 
     // Handle standard format with BattleResults at root
-    else if (fileContent.BattleResults) {
-      battleWinLose = fileContent.BattleResults.battleWinLose;
-      characterRecord = fileContent.BattleResults.characterRecord;
+    else if (analysisContent.BattleResults) {
+      battleWinLose = analysisContent.BattleResults.battleWinLose;
+      characterRecord = analysisContent.BattleResults.characterRecord;
     } 
     // Handle legacy format with direct properties
-    else if (fileContent.battleWinLose && fileContent.characterRecord) {
-      battleWinLose = fileContent.battleWinLose;
-      characterRecord = fileContent.characterRecord;
+    else if (analysisContent.battleWinLose && analysisContent.characterRecord) {
+      battleWinLose = analysisContent.battleWinLose;
+      characterRecord = analysisContent.characterRecord;
     }
     // Fallback: recursively search for BattleResults in nested structure
     else {
-      const battleData = findBattleData(fileContent);
+      const battleData = findBattleData(analysisContent);
       if (battleData) {
         battleWinLose = battleData.battleWinLose;
         characterRecord = battleData.characterRecord;
@@ -2311,20 +2375,20 @@ export default function App() {
   // Extract team names from teams array (multiple format support)
   let p1TeamName = "Team 1";
   let p2TeamName = "Team 2";
-  if (fileContent && typeof fileContent === 'object') {
+  if (analysisContent && typeof analysisContent === 'object') {
     let teamsArray = null;
     
     // Check for TeamBattleResults format first
-    if (fileContent.TeamBattleResults && Array.isArray(fileContent.TeamBattleResults.teams)) {
-      teamsArray = fileContent.TeamBattleResults.teams;
+    if (analysisContent.TeamBattleResults && Array.isArray(analysisContent.TeamBattleResults.teams)) {
+      teamsArray = analysisContent.TeamBattleResults.teams;
     }
     // Check for direct teams array
-    else if (Array.isArray(fileContent.teams)) {
-      teamsArray = fileContent.teams;
+    else if (Array.isArray(analysisContent.teams)) {
+      teamsArray = analysisContent.teams;
     }
     // Check for nested teams in BattleResults
-    else if (fileContent.BattleResults && Array.isArray(fileContent.BattleResults.teams)) {
-      teamsArray = fileContent.BattleResults.teams;
+    else if (analysisContent.BattleResults && Array.isArray(analysisContent.BattleResults.teams)) {
+      teamsArray = analysisContent.BattleResults.teams;
     }
     
     if (teamsArray && teamsArray.length >= 2) {
@@ -2598,119 +2662,38 @@ export default function App() {
               </label>
             </div>
 
-            {viewType === 'single' && (
-              <div className={`rounded-xl p-4 ${darkMode ? 'bg-gray-700' : 'bg-gray-50'}`}>
-                <label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
-                  Select a test data file to analyze:
-                </label>
-                <div className="relative">
-                  <div className="relative">
-                    <Search className={`absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 pointer-events-none ${darkMode ? 'text-gray-400' : 'text-gray-500'}`} />
-                    <input
-                      type="text"
-                      role="combobox"
-                      aria-expanded={comboboxOpen}
-                      aria-controls="file-listbox"
-                      aria-autocomplete="list"
-                      value={comboboxInput}
-                      onChange={(e) => {
-                        setComboboxInput(e.target.value);
-                        setComboboxOpen(true);
-                        setComboboxHighlightedIndex(-1);
-                      }}
-                      onFocus={() => setComboboxOpen(true)}
-                      onBlur={() => setTimeout(() => setComboboxOpen(false), 150)}
-                      onKeyDown={(e) => {
-                        const filtered = fileNames.filter(f => f.toLowerCase().includes(comboboxInput.toLowerCase()));
-                        if (filtered.length === 0) return; // No results to navigate
-                        
-                        if (e.key === 'ArrowDown') {
-                          e.preventDefault();
-                          setComboboxHighlightedIndex(i => {
-                            const next = i + 1;
-                            return next >= filtered.length ? 0 : next; // Wrap to top
-                          });
-                          setComboboxOpen(true);
-                        } else if (e.key === 'ArrowUp') {
-                          e.preventDefault();
-                          setComboboxHighlightedIndex(i => {
-                            const prev = i - 1;
-                            return prev < 0 ? filtered.length - 1 : prev; // Wrap to bottom
-                          });
-                          setComboboxOpen(true);
-                        } else if (e.key === 'Enter') {
-                          e.preventDefault();
-                          const choice = comboboxHighlightedIndex >= 0 ? filtered[comboboxHighlightedIndex] : filtered[0];
-                          if (choice) {
-                            setComboboxInput(choice);
-                            handleSelect(choice);
-                            setComboboxOpen(false);
-                            setComboboxHighlightedIndex(-1);
-                          }
-                        } else if (e.key === 'Escape') {
-                          e.preventDefault();
-                          setComboboxOpen(false);
-                          setComboboxHighlightedIndex(-1);
-                        }
-                      }}
-                      placeholder="Search or choose a battle result file..."
-                      className={`w-full pl-10 pr-10 py-3 border rounded-lg focus:ring-2 focus:ring-blue-500 ${
-                        darkMode 
-                          ? 'bg-gray-800 border-gray-600 text-white focus:border-blue-400 placeholder-gray-500' 
-                          : 'bg-white border-gray-300 text-gray-900 focus:border-blue-500 placeholder-gray-400'
-                      }`}
-                    />
-                    {comboboxInput && (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setComboboxInput('');
-                          setComboboxHighlightedIndex(-1);
-                          setSelectedFile(null);
-                          setFileContent(null);
-                        }}
-                        className={`absolute right-3 top-1/2 -translate-y-1/2 p-1 rounded hover:bg-opacity-10 ${darkMode ? 'text-gray-200 bg-gray-800 hover:text-gray-300 hover:bg-gray-700' : 'text-gray-500 hover:text-gray-700 hover:bg-black'}`}
-                      >
-                        <X className="w-4 h-4" />
-                      </button>
-                    )}
-                  </div>
+            <div className={`rounded-xl p-4 ${darkMode ? 'bg-gray-700' : 'bg-gray-50'}`}>
+              <label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                {viewType === 'single' ? 'Search categories or matches to analyze:' : 'Search categories or matches to analyze:'}
+              </label>
+              <BRDataSelector
+                allowFolderSelect={viewType !== 'single'}
+                onSelect={async (selectedIds) => {
+                  if (!Array.isArray(selectedIds) || selectedIds.length === 0) return;
+                  setSelectedFilePath(selectedIds);
+                  setFileContent(null);
 
-                  {comboboxOpen && (() => {
-                    const filtered = fileNames.filter(f => f.toLowerCase().includes(comboboxInput.toLowerCase()));
-                    return (
-                      <ul
-                        id="file-listbox"
-                        role="listbox"
-                        style={{ listStyleType: 'none', padding: 0, margin: 0 }}
-                        className={`absolute z-20 mt-1 w-full max-h-48 overflow-auto rounded-lg border shadow-lg text-sm ${darkMode ? 'bg-gray-800 border-gray-600 text-gray-100' : 'bg-white border-gray-200'}`}
-                      >
-                        {filtered.length === 0 ? (
-                          <li className={`px-3 py-2 text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
-                            No files found
-                          </li>
-                        ) : (
-                          filtered.map((file, idx) => (
-                            <li
-                              key={file}
-                              role="option"
-                              aria-selected={selectedFile === file}
-                              onMouseDown={(ev) => { ev.preventDefault(); setComboboxInput(file); handleSelect(file); setComboboxOpen(false); }}
-                              onMouseEnter={() => setComboboxHighlightedIndex(idx)}
-                              className={`px-3 py-2 cursor-pointer truncate transition-colors ${
-                                comboboxHighlightedIndex === idx ? (darkMode ? 'bg-gray-700' : 'bg-gray-100') : ''
-                              } ${selectedFile === file ? (darkMode ? 'text-blue-400 font-semibold' : 'text-blue-600 font-semibold') : ''}`}
-                            >
-                              {file}
-                            </li>
-                          ))
-                        )}
-                      </ul>
-                    );
-                  })()}
-                </div>
-              </div>
-            )}
+                  // Only fetch files (ending in .json)
+                  const fileIds = selectedIds.filter(id => id.endsWith('.json'));
+                  if (fileIds.length === 0) return;
+
+                  const base = (typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.BASE_URL) ? import.meta.env.BASE_URL : '';
+                  const fileContents = await Promise.all(
+                    fileIds.map(async id => {
+                      const staticUrl = `${base}BR_Data/${id}`;
+                      try {
+                        const res = await fetch(staticUrl);
+                        if (res.ok) return { name: id, content: await res.json() };
+                      } catch (err) {
+                        // ignore individual file errors and continue
+                      }
+                      return null;
+                    })
+                  );
+                  setFileContent(fileContents.filter(Boolean));
+                }}
+              />
+            </div>
           </div>
         )}
 
@@ -2940,23 +2923,6 @@ export default function App() {
                     <Eye className="w-5 h-5" />
                     Analyze {manualFiles[0].name}
                   </button>
-                ) : viewType === 'single' && manualFiles.filter(f => !f.error).length > 0 ? (
-                  <div className="space-y-3">
-                    <select
-                      value={selectedFile || ''}
-                      onChange={e => handleManualFileSelect(e.target.value)}
-                      className={`w-full p-3 border rounded-lg focus:ring-2 focus:ring-blue-500 ${
-                        darkMode 
-                          ? 'bg-gray-800 border-gray-600 text-white focus:border-blue-400' 
-                          : 'bg-white border-gray-300 text-gray-900 focus:border-blue-500'
-                      }`}
-                    >
-                      <option value="" disabled>Select a file to analyze...</option>
-                      {manualFiles.filter(f => !f.error).map((file) => (
-                        <option key={file.name} value={file.name}>{file.name}</option>
-                      ))}
-                    </select>
-                  </div>
                 ) : null}
               </div>
             )}
@@ -2976,7 +2942,7 @@ export default function App() {
                 <div>
                   <h2 className={`text-2xl font-bold ${darkMode ? 'text-white' : 'text-gray-800'}`}>Aggregated Character Performance</h2>
                   <p className={`${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
-                    Data from {mode === 'reference' ? fileNames.length : manualFiles.filter(f => !f.error).length} battle files
+                    Data from {mode === 'reference' ? 1 : manualFiles.filter(f => !f.error).length} battle file{(mode === 'reference' ? 1 : manualFiles.filter(f => !f.error).length) !== 1 ? 's' : ''}
                   </p>
                 </div>
               </div>
@@ -4227,22 +4193,100 @@ export default function App() {
         )}
 
         {/* Single File Analysis Results */}
-        {((mode === 'reference' && selectedFile && viewType === 'single') || 
-          (mode === 'manual' && selectedFile && fileContent && viewType === 'single')) && (
+        {((mode === 'reference' && (analysisSelectedFilePath || selectedFilePath) && viewType === 'single') || 
+          (mode === 'manual' && (((analysisSelectedFilePath && analysisFileContent) || (selectedFilePath && fileContent)) && viewType === 'single'))) && (
           <div className={`rounded-2xl shadow-xl p-6 ${darkMode ? 'bg-gray-800' : 'bg-white'}`}>
+            <div className="relative mb-2">  
+              <div className={`flex left-3 top-1/2 transform -translate-y-1/2 text-sm font-medium mb-2 gap-2 ${darkMode ? 'text-gray-300' : 'text-gray-500'}`}>
+                <Search className="w-4 h-4" /> Match Selection
+              </div>
+              <input
+                ref={headerInputRef}
+                type="text"
+                value={headerFileInput || ''}
+                onChange={e => { setHeaderFileInput(e.target.value); setHeaderDropdownOpen(e.target.value.length > 0); setHeaderHighlightedIndex(-1); }}
+                onKeyDown={e => handleHeaderKeyDown(e, (Array.isArray(fileContent) ? fileContent.filter(fc => fc.name) : (mode === 'manual' ? manualFiles.filter(f => !f.error).map(f => ({ name: f.name })) : [])))}
+                placeholder="Search match to analyze..."
+                className={`w-full pl-10 pr-10 py-2 rounded-lg border text-sm focus:outline-none focus:ring-2 ${
+                  darkMode
+                    ? 'bg-gray-800 border-gray-600 text-white placeholder-gray-400 focus:ring-blue-400'
+                    : 'bg-white border-gray-300 text-gray-900 placeholder-gray-500 focus:ring-blue-500'
+                }`}
+                onFocus={() => setHeaderDropdownOpen((headerFileInput || '').length > 0)}
+              />
+            </div>
             <div className="flex items-center justify-between mb-6">
               <div className="flex items-center gap-3">
                 <FileText className={`w-8 h-8 ${darkMode ? 'text-blue-400' : 'text-blue-600'}`} />
                 <div>
-                  <h2 className={`text-2xl font-bold ${darkMode ? 'text-white' : 'text-gray-800'}`}>Match Analysis: {selectedFile}</h2>
+                  <h2 className={`text-2xl font-bold ${darkMode ? 'text-white' : 'text-gray-800'}`}>Match Analysis</h2>
                   <p className={`${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>Detailed breakdown of this battle</p>
                 </div>
               </div>
-              <div className="flex items-center gap-4">
+              <div className="flex items-center gap-4 relative">
+                {/* Top manual-file search removed — unified to the single selector below */}
+
+                {/* Searchable input + dropdown for reference files */}
+                {(mode === 'reference' || mode === 'manual') && (
+                  <div className="flex items-center gap-3">
+                    {false && (
+                      <div ref={headerDropdownRef} style={{ maxHeight: '360px' }} className={`absolute z-20 mt-1 w-56 overflow-y-auto rounded-lg border shadow-lg ${
+                        darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'
+                      }`}> 
+                        {fileContent
+                          .filter(fc => fc.name)
+                          .filter(fc => getFileNameFromPath(fc.name).toLowerCase().includes((headerFileInput || '').toLowerCase()))
+                          .map((fc, idx) => (
+                            <button
+                              key={fc.name}
+                              onMouseEnter={() => setHeaderHighlightedIndex(idx)}
+                              onClick={() => { setHeaderFileInput(getFileNameFromPath(fc.name)); handleHeaderFileSelect(fc.name); setHeaderDropdownOpen(false); setHeaderHighlightedIndex(-1); }}
+                              className={`w-full text-left px-3 py-2 text-sm transition-colors flex items-center justify-between ${
+                                headerHighlightedIndex === idx ? (darkMode ? 'bg-gray-700 text-white' : 'bg-gray-100 text-gray-900') : (darkMode ? 'text-gray-100 hover:bg-gray-700' : 'text-gray-800 hover:bg-gray-100')
+                              }`}
+                            >
+                              <span className="truncate">{getFileNameFromPath(fc.name)}</span>
+                            </button>
+                          ))}
+                        {fileContent.filter(fc => fc.name).filter(fc => getFileNameFromPath(fc.name).toLowerCase().includes((headerFileInput || '').toLowerCase())).length === 0 && (
+                          <div className={`px-3 py-2 text-sm ${darkMode ? 'bg-gray-800 text-gray-400' : 'text-gray-500'}`}>No files</div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
             </div>
             
             {/* Match Outcome Summary */}
+            {/* Floating dropdown portal (renders outside layout to avoid pushing content) */}
+            {headerDropdownOpen && headerDropdownPos && createPortal(
+              <div
+                ref={headerDropdownRef}
+                style={{ position: 'absolute', top: headerDropdownPos.top + 'px', left: headerDropdownPos.left + 'px', width: headerDropdownPos.width + 'px', zIndex: 9999, maxHeight: '360px', overflowY: 'auto' }}
+                className={`rounded-lg border shadow-lg ${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'}`}
+              >
+                {/* Combine manual or reference sources depending on mode */}
+                {(mode === 'manual' ? manualFiles.filter(f => !f.error).map(f => ({ name: f.name })) : (Array.isArray(fileContent) ? fileContent.filter(fc => fc.name) : []) )
+                  .filter(item => getFileNameFromPath(item.name).toLowerCase().includes((headerFileInput || '').toLowerCase()))
+                  .map((item, idx) => (
+                    <button
+                      key={item.name}
+                      onMouseEnter={() => setHeaderHighlightedIndex(idx)}
+                      onClick={() => { setHeaderFileInput(getFileNameFromPath(item.name)); handleHeaderFileSelect(item.name); setHeaderDropdownOpen(false); setHeaderHighlightedIndex(-1); }}
+                      className={`w-full bg-gray-700 text-left px-3 py-2 text-sm transition-colors ${
+                        headerHighlightedIndex === idx ? (darkMode ? 'bg-gray-700 text-white' : 'bg-gray-100 text-gray-900') : (darkMode ? 'text-gray-100 hover:bg-gray-700' : 'text-gray-800 hover:bg-gray-100')
+                      }`}
+                    >
+                      <span className="truncate">{getFileNameFromPath(item.name)}</span>
+                    </button>
+                ))}
+                {(mode === 'manual' ? manualFiles.filter(f => !f.error).map(f => ({ name: f.name })) : (Array.isArray(fileContent) ? fileContent.filter(fc => fc.name) : [] )).filter(item => getFileNameFromPath(item.name).toLowerCase().includes((headerFileInput || '').toLowerCase())).length === 0 && (
+                  <div className={`px-3 py-2 text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>No files</div>
+                )}
+              </div>, document.body)
+            }
+
             {battleWinLose && (
               <div className={`mb-6 p-4 rounded-xl border text-center ${
                 battleWinLose === 'Win'
@@ -4831,7 +4875,7 @@ export default function App() {
               <div>
                 <h2 className={`text-2xl font-bold ${darkMode ? 'text-white' : 'text-gray-800'}`}>Team Rankings</h2>
                 <p className={`${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
-                  Teams ranked by win rate from {mode === 'reference' ? fileNames.length : manualFiles.filter(f => !f.error).length} battle files
+                  Teams ranked by win rate from {mode === 'reference' ? 1 : manualFiles.filter(f => !f.error).length} battle file{(mode === 'reference' ? 1 : manualFiles.filter(f => !f.error).length) !== 1 ? 's' : ''}
                 </p>
               </div>
             </div>
@@ -5184,4 +5228,46 @@ export default function App() {
       </div>
     </div>
   );
+}
+
+// Determine performance level for a value given a distribution of values.
+// Returns one of: 'excellent', 'good', 'average', 'below', 'poor'
+function getPerformanceLevel(value, allValues = []) {
+  // Fallback simple thresholds when no distribution is provided
+  if (!Array.isArray(allValues) || allValues.length === 0) {
+    if (value >= 90) return 'excellent';
+    if (value >= 75) return 'good';
+    if (value >= 50) return 'average';
+    if (value >= 25) return 'below-average';
+    return 'poor';
+  }
+
+  // Create a sorted copy and compute percentile (higher is better)
+  const sorted = [...allValues].slice().sort((a, b) => a - b);
+  // If allValues are identical, avoid divide by zero and return average
+  const min = sorted[0];
+  const max = sorted[sorted.length - 1];
+  if (max === min) return 'average';
+
+  // Compute fraction of values less-or-equal to current value.
+  // Higher fraction => better performance.
+  const lessOrEqualCount = sorted.filter(v => v <= value).length;
+  const frac = lessOrEqualCount / sorted.length;
+
+  // percentile ranges: top 10% -> excellent, 70-90% -> good, 40-70% -> average,
+  // 20-40% -> below-average, <20% -> poor
+  if (frac >= 0.9) return 'excellent';
+  if (frac >= 0.7) return 'good';
+  if (frac >= 0.4) return 'average';
+  if (frac >= 0.2) return 'below-average';
+  return 'poor';
+}
+
+// Extract filename (without path or .json extension) from a given path or name
+function getFileNameFromPath(pathOrName) {
+  if (!pathOrName) return '';
+  // If it's a full path, split by both / and \\ for windows paths
+  const parts = pathOrName.split(/\\|\//g);
+  const last = parts[parts.length - 1] || pathOrName;
+  return last.replace(/\.json$/i, '');
 }
