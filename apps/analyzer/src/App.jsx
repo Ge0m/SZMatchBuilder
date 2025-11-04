@@ -8,6 +8,8 @@ import { formatNumber } from './utils/formatters.js';
 import DataTable from './components/DataTable.jsx';
 import { prepareCharacterAveragesData, prepareMatchDetailsData, getCharacterAveragesTableConfig, getMatchDetailsTableConfig, getMetaTableConfig } from './components/TableConfigs.jsx';
 import { exportToExcel } from './utils/excelExport.js';
+import { PerFormStatsDisplay, PerFormStatsDisplayAggregated } from './components/PerFormStatsDisplay.jsx';
+import { calculatePerFormStats } from './utils/formStatsCalculator.js';
 import { 
   Trophy, 
   Swords, 
@@ -238,6 +240,7 @@ function MetricDisplay({ label, value, icon: Icon, color = 'gray', darkMode = fa
     yellow: darkMode ? 'text-yellow-400' : 'text-yellow-600',
     purple: darkMode ? 'text-purple-400' : 'text-purple-600',
     orange: darkMode ? 'text-orange-400' : 'text-orange-600',
+    teal: darkMode ? 'text-teal-400' : 'text-teal-600',
     gray: darkMode ? 'text-gray-400' : 'text-gray-600'
   };
 
@@ -256,6 +259,70 @@ function MetricDisplay({ label, value, icon: Icon, color = 'gray', darkMode = fa
       <span className={`${sizeClasses[size].value} ${colorClasses[color]}`}>
         {value}
       </span>
+    </div>
+  );
+}
+
+// Blast Metric Display Component
+// Displays blast tracking with hit/thrown/rate format: "X/Y (Z%)"
+// Legacy mode displays only thrown count (for old JSON format without hit data)
+function BlastMetricDisplay({ label, thrown, hit, hitRate, color = 'blue', darkMode = false, size = 'medium', legacyMode = false }) {
+  const getColorClass = () => {
+    const colors = {
+      orange: darkMode ? 'text-orange-400' : 'text-orange-600',
+      red: darkMode ? 'text-red-400' : 'text-red-600',
+      yellow: darkMode ? 'text-yellow-400' : 'text-yellow-600',
+      purple: darkMode ? 'text-purple-400' : 'text-purple-600',
+      blue: darkMode ? 'text-blue-400' : 'text-blue-600',
+      cyan: darkMode ? 'text-cyan-400' : 'text-cyan-600',
+    };
+    return colors[color] || colors.blue;
+  };
+
+  const getRateColorClass = () => {
+    // If no blasts thrown (hitRate is null), use gray
+    if (hitRate === null) return darkMode ? 'text-gray-400' : 'text-gray-600';
+    if (hitRate >= 70) return darkMode ? 'text-green-400' : 'text-green-600';
+    if (hitRate >= 50) return darkMode ? 'text-yellow-400' : 'text-yellow-600';
+    return darkMode ? 'text-red-400' : 'text-red-600';
+  };
+
+  const sizeClasses = {
+    small: { label: 'text-xs', value: 'text-sm' },
+    medium: { label: 'text-sm', value: 'text-base font-bold' },
+    large: { label: 'text-sm', value: 'text-lg font-bold' }
+  };
+
+  // Legacy mode - display only thrown count (old JSON format)
+  if (legacyMode) {
+    return (
+      <div className="flex items-center justify-between">
+        <span className={`${sizeClasses[size].label} ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
+          {label}
+        </span>
+        <span className={`${sizeClasses[size].value} ${getColorClass()}`}>
+          {thrown || 0}
+        </span>
+      </div>
+    );
+  }
+
+  // New format - display hit/thrown/rate
+  return (
+    <div className={`flex items-center justify-between p-2 rounded ${
+      darkMode ? 'bg-gray-800/50' : 'bg-gray-100'
+    }`}>
+      <span className={`${sizeClasses[size].label} font-medium ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+        {label}
+      </span>
+      <div className="flex items-center gap-2">
+        <span className={`font-mono font-bold ${sizeClasses[size].value} ${getColorClass()}`}>
+          {hit}/{thrown}
+        </span>
+        <span className={`font-mono font-bold ${sizeClasses[size].value} ${getRateColorClass()}`}>
+          ({hitRate !== null ? `${hitRate.toFixed(1)}%` : 'N/A'})
+        </span>
+      </div>
     </div>
   );
 }
@@ -391,6 +458,25 @@ function extractStats(char, charMap, capsuleMap = {}, position = null, aiStrateg
     else if (key.includes('EXA2')) exa2Count += value;
   });
   
+  // New blast tracking system - parse additionalCounts if available
+  const additionalCounts = char.additionalCounts || {};
+  const hasAdditionalCounts = char.additionalCounts !== undefined;
+  
+  // New blast tracking (preferred method with fallback to old method)
+  const s1Blast = additionalCounts.s1Blast ?? spm1Count;
+  const s2Blast = additionalCounts.s2Blast ?? spm2Count;
+  const ultBlast = additionalCounts.ultBlast ?? (numCount.uLTCount || 0);
+  // Hit blast values should remain undefined for legacy data (no fallback to 0)
+  const s1HitBlast = additionalCounts.s1HitBlast;
+  const s2HitBlast = additionalCounts.s2HitBlast;
+  const uLTHitBlast = additionalCounts.uLTHitBlast;
+  const tags = additionalCounts.tags ?? 0;
+  
+  // Calculate hit rates (percentage) - null if no blasts thrown
+  const s1HitRate = s1Blast > 0 ? (s1HitBlast / s1Blast) * 100 : null;
+  const s2HitRate = s2Blast > 0 ? (s2HitBlast / s2Blast) * 100 : null;
+  const ultHitRate = ultBlast > 0 ? (uLTHitBlast / ultBlast) * 100 : null;
+  
   // Parse attack hit counts for combat performance metrics
   let speedImpactCount = 0;
   let speedImpactWins = 0;
@@ -424,12 +510,24 @@ function extractStats(char, charMap, capsuleMap = {}, position = null, aiStrateg
     zCounterCount: numCount.zCounter || 0,
     superCounterCount: numCount.superCounterCount || 0,
     revengeCounterCount: numCount.revengeCounter || 0,
-    // Special Abilities - detailed blast tracking
-    spm1Count,
-    spm2Count,
+    tags, // New: Character swap tracking
+    // Special Abilities - detailed blast tracking (NEW SYSTEM)
+    hasAdditionalCounts, // Flag to determine if new format with additionalCounts
+    s1Blast,        // Super 1 thrown
+    s2Blast,        // Super 2 thrown
+    ultBlast,       // Ultimate thrown
+    s1HitBlast,     // Super 1 hit
+    s2HitBlast,     // Super 2 hit
+    uLTHitBlast,    // Ultimate hit
+    s1HitRate,      // Super 1 hit rate %
+    s2HitRate,      // Super 2 hit rate %
+    ultHitRate,     // Ultimate hit rate %
+    // Legacy blast tracking (kept for backwards compatibility)
+    spm1Count: s1Blast,
+    spm2Count: s2Blast,
     exa1Count,
     exa2Count,
-    dragonDashMileage: count.dragonDashMileage || 0,
+    dragonDashMileage: parseFloat((count.dragonDashMileage || 0).toFixed(0)),
     // Combat Performance metrics
     maxComboNum: count.maxComboNum || 0,
     maxComboDamage: count.maxComboDamage || 0,
@@ -1031,7 +1129,19 @@ function getAggregatedCharacterData(files, charMap, capsuleMap = {}, aiStrategie
           totalZCounters: 0,
           totalSuperCounters: 0,
           totalRevengeCounters: 0,
-          // Special Abilities - detailed blast tracking
+          totalTags: 0, // New: Character swaps
+          // Special Abilities - NEW blast tracking system
+          totalS1Blast: 0,
+          totalS2Blast: 0,
+          totalUltBlast: 0,
+          totalS1HitBlast: 0,
+          totalS2HitBlast: 0,
+          totalULTHitBlast: 0,
+          // Trackable blasts (only from matches with additionalCounts)
+          totalS1BlastTrackable: 0,
+          totalS2BlastTrackable: 0,
+          totalUltBlastTrackable: 0,
+          // Special Abilities - Legacy blast tracking (kept for backwards compatibility)
           totalSPM1: 0,
           totalSPM2: 0,
           totalEXA1: 0,
@@ -1096,9 +1206,36 @@ function getAggregatedCharacterData(files, charMap, capsuleMap = {}, aiStrategie
       charData.totalZCounters += stats.zCounterCount;
       charData.totalSuperCounters += stats.superCounterCount;
       charData.totalRevengeCounters += stats.revengeCounterCount;
-      // Special Abilities - detailed blast tracking
-      charData.totalSPM1 += stats.spm1Count;
-      charData.totalSPM2 += stats.spm2Count;
+      charData.totalTags += stats.tags;
+      // Special Abilities - NEW blast tracking system
+      charData.totalS1Blast += stats.s1Blast;
+      charData.totalS2Blast += stats.s2Blast;
+      charData.totalUltBlast += stats.ultBlast;
+      charData.totalS1HitBlast += stats.s1HitBlast;
+      charData.totalS2HitBlast += stats.s2HitBlast;
+      charData.totalULTHitBlast += stats.uLTHitBlast;
+      // Track separately for hit rate calculation (only from new format matches)
+      if (stats.hasAdditionalCounts) {
+        charData.totalS1BlastTrackable += stats.s1Blast;
+        charData.totalS2BlastTrackable += stats.s2Blast;
+        charData.totalUltBlastTrackable += stats.ultBlast;
+      }
+      
+      // DEBUG: Log for Panzy to see what's happening in Aggregated Stats
+      if (aggregationKey.toLowerCase().includes('panzy')) {
+        console.log('=== AGGREGATED STATS - Panzy Match Data ===');
+        console.log('Match from file:', fileName);
+        console.log('stats.hasAdditionalCounts:', stats.hasAdditionalCounts);
+        console.log('stats.s1Blast:', stats.s1Blast);
+        console.log('stats.s1HitBlast:', stats.s1HitBlast);
+        console.log('Running total - totalS1Blast:', charData.totalS1Blast);
+        console.log('Running total - totalS1HitBlast:', charData.totalS1HitBlast);
+        console.log('Running total - totalS1BlastTrackable:', charData.totalS1BlastTrackable);
+      }
+      
+      // Special Abilities - Legacy blast tracking (also updated to new values)
+      charData.totalSPM1 += stats.s1Blast;
+      charData.totalSPM2 += stats.s2Blast;
       charData.totalEXA1 += stats.exa1Count;
       charData.totalEXA2 += stats.exa2Count;
       charData.totalDragonDashMileage += stats.dragonDashMileage;
@@ -1193,8 +1330,20 @@ function getAggregatedCharacterData(files, charMap, capsuleMap = {}, aiStrategie
         zCounterCount: stats.zCounterCount,
         superCounterCount: stats.superCounterCount,
         revengeCounterCount: stats.revengeCounterCount,
-        spm1Count: stats.spm1Count,
-        spm2Count: stats.spm2Count,
+        tags: stats.tags,
+        // NEW blast tracking
+        s1Blast: stats.s1Blast,
+        s2Blast: stats.s2Blast,
+        ultBlast: stats.ultBlast,
+        s1HitBlast: stats.s1HitBlast,
+        s2HitBlast: stats.s2HitBlast,
+        uLTHitBlast: stats.uLTHitBlast,
+        s1HitRate: stats.s1HitRate,
+        s2HitRate: stats.s2HitRate,
+        ultHitRate: stats.ultHitRate,
+        // Legacy blast tracking (for backwards compatibility)
+        spm1Count: stats.s1Blast,
+        spm2Count: stats.s2Blast,
         exa1Count: stats.exa1Count,
         exa2Count: stats.exa2Count,
         dragonDashMileage: stats.dragonDashMileage,
@@ -1224,46 +1373,108 @@ function getAggregatedCharacterData(files, charMap, capsuleMap = {}, aiStrategie
       }
       
       // Aggregate per-form stats from characterIdRecord if available
-      if (characterIdRecord) {
-        const allForms = [];
-        if (originalForm) allForms.push(originalForm);
-        if (Array.isArray(char.formChangeHistory) && char.formChangeHistory.length > 0) {
-          allForms.push(...char.formChangeHistory.map(f => f.key));
-        }
+      if (characterIdRecord && char.formChangeHistory && char.formChangeHistory.length > 0) {
+        // Calculate per-form stats for this match using the calculator
+        const perFormStats = calculatePerFormStats(
+          char,
+          characterIdRecord,
+          char.formChangeHistory,
+          originalForm
+        );
         
-        allForms.forEach(formId => {
-          const formRecord = characterIdRecord[`(Key="${formId}")`];
-          if (formRecord) {
-            const formName = charMap[formId] || formId;
-            if (!charData.formStats[formName]) {
-              charData.formStats[formName] = {
-                name: formName,
-                totalDamage: 0,
-                totalTaken: 0,
-                totalHealth: 0,
-                totalBattleTime: 0,
-                totalSpecial: 0,
-                totalUltimates: 0,
-                totalSkills: 0,
-                totalKills: 0,
-                matchCount: 0
-              };
-            }
-            
-            const formData = charData.formStats[formName];
-            const formCount = formRecord.battleCount || {};
-            const formNumCount = formCount.battleNumCount || {};
-            
-            formData.totalDamage += formCount.givenDamage || 0;
-            formData.totalTaken += formCount.takenDamage || 0;
-            formData.totalHealth += formCount.hPGaugeValue || 0;
-            formData.totalBattleTime += parseBattleTime(formCount.battleTime) || 0;
-            formData.totalSpecial += formNumCount.sPMCount || 0;
-            formData.totalUltimates += formNumCount.uLTCount || 0;
-            formData.totalSkills += formNumCount.eXACount || 0;
-            formData.totalKills += formCount.killCount || 0;
-            formData.matchCount += 1;
+        // Aggregate each form's stats
+        perFormStats.forEach(formStat => {
+          const formId = formStat.formId;
+          const formName = charMap[formId] || formId;
+          
+          if (!charData.formStats[formId]) {
+            charData.formStats[formId] = {
+              formId: formId,
+              formNumber: formStat.formNumber,
+              name: formName,
+              isFirstForm: formStat.isFirstForm,
+              isFinalForm: formStat.isFinalForm,
+              // Combat stats
+              totalDamageDone: 0,
+              totalDamageTaken: 0,
+              totalBattleTime: 0,
+              totalBattleCount: 0,
+              // Health
+              totalHPRemaining: 0,
+              totalHPMax: 0,
+              // Special abilities
+              totalSpecialMoves: 0,
+              totalUltimates: 0,
+              totalSkills: 0,
+              // Blast tracking
+              totalS1Blast: 0,
+              totalS2Blast: 0,
+              totalUltBlast: 0,
+              totalS1HitBlast: 0,
+              totalS2HitBlast: 0,
+              totalULTHitBlast: 0,
+              // Survival & Defense
+              totalSparking: 0,
+              totalCharges: 0,
+              totalGuards: 0,
+              totalEnergyBlasts: 0,
+              totalZCounters: 0,
+              totalSuperCounters: 0,
+              totalRevengeCounters: 0,
+              // Combat mechanics
+              totalMaxComboNum: 0,
+              totalMaxComboDamage: 0,
+              totalThrows: 0,
+              totalLightningAttacks: 0,
+              totalVanishingAttacks: 0,
+              totalDragonHoming: 0,
+              totalSpeedImpacts: 0,
+              totalSpeedImpactWins: 0,
+              totalSparkingCombo: 0,
+              totalDragonDashMileage: 0,
+              // Kills
+              totalKills: 0,
+              matchCount: 0
+            };
           }
+          
+          const formData = charData.formStats[formId];
+          
+          // Accumulate stats for this form
+          formData.totalDamageDone += formStat.damageDone || 0;
+          formData.totalDamageTaken += formStat.damageTaken || 0;
+          formData.totalBattleTime += formStat.battleTime || 0;
+          formData.totalBattleCount += formStat.battleCount || 0;
+          formData.totalHPRemaining += formStat.hPGaugeValue || 0;
+          formData.totalHPMax += formStat.hPGaugeValueMax || 0;
+          formData.totalSpecialMoves += formStat.specialMovesUsed || 0;
+          formData.totalUltimates += formStat.ultimatesUsed || 0;
+          formData.totalSkills += formStat.skillsUsed || 0;
+          formData.totalS1Blast += formStat.s1Blast || 0;
+          formData.totalS2Blast += formStat.s2Blast || 0;
+          formData.totalUltBlast += formStat.ultBlast || 0;
+          formData.totalS1HitBlast += formStat.s1HitBlast || 0;
+          formData.totalS2HitBlast += formStat.s2HitBlast || 0;
+          formData.totalULTHitBlast += formStat.uLTHitBlast || 0;
+          formData.totalSparking += formStat.sparkingCount || 0;
+          formData.totalCharges += formStat.chargeCount || 0;
+          formData.totalGuards += formStat.guardCount || 0;
+          formData.totalEnergyBlasts += formStat.shotEnergyBulletCount || 0;
+          formData.totalZCounters += formStat.zCounterCount || 0;
+          formData.totalSuperCounters += formStat.superCounterCount || 0;
+          formData.totalRevengeCounters += formStat.revengeCounterCount || 0;
+          formData.totalMaxComboNum += formStat.maxComboNum || 0;
+          formData.totalMaxComboDamage += formStat.maxComboDamage || 0;
+          formData.totalThrows += formStat.throwCount || 0;
+          formData.totalLightningAttacks += formStat.lightningAttackCount || 0;
+          formData.totalVanishingAttacks += formStat.vanishingAttackCount || 0;
+          formData.totalDragonHoming += formStat.dragonHomingCount || 0;
+          formData.totalSpeedImpacts += formStat.speedImpactCount || 0;
+          formData.totalSpeedImpactWins += formStat.speedImpactWins || 0;
+          formData.totalSparkingCombo += formStat.sparkingComboCount || 0;
+          formData.totalDragonDashMileage += formStat.dragonDashMileage || 0;
+          formData.totalKills += formStat.kills || 0;
+          formData.matchCount += 1;
         });
       }
     });
@@ -1363,17 +1574,69 @@ function getAggregatedCharacterData(files, charMap, capsuleMap = {}, aiStrategie
       : null;
     
     // Calculate averages for per-form stats
-    const formStatsArray = Object.values(char.formStats).map(formStat => ({
-      ...formStat,
-      avgDamage: Math.round(formStat.totalDamage / formStat.matchCount),
-      avgTaken: Math.round(formStat.totalTaken / formStat.matchCount),
-      avgHealth: Math.round(formStat.totalHealth / formStat.matchCount),
-      avgBattleTime: Math.round((formStat.totalBattleTime / formStat.matchCount) * 10) / 10,
-      avgSpecial: Math.round((formStat.totalSpecial / formStat.matchCount) * 10) / 10,
-      avgUltimates: Math.round((formStat.totalUltimates / formStat.matchCount) * 10) / 10,
-      avgSkills: Math.round((formStat.totalSkills / formStat.matchCount) * 10) / 10,
-      avgKills: Math.round((formStat.totalKills / formStat.matchCount) * 10) / 10
-    }));
+    const formStatsArray = Object.values(char.formStats).map(formStat => {
+      const matchCount = formStat.matchCount || 1;
+      const damagePerSecond = (formStat.totalBattleTime || 0) > 0 
+        ? (formStat.totalDamageDone || 0) / formStat.totalBattleTime 
+        : 0;
+      const damageEfficiency = (formStat.totalDamageTaken || 0) > 0
+        ? (formStat.totalDamageDone || 0) / formStat.totalDamageTaken
+        : ((formStat.totalDamageDone || 0) > 0 ? 999 : 0);
+      
+      return {
+        ...formStat,
+        // Averages
+        avgDamageDone: Math.round((formStat.totalDamageDone || 0) / matchCount),
+        avgDamageTaken: Math.round((formStat.totalDamageTaken || 0) / matchCount),
+        avgBattleTime: Math.round(((formStat.totalBattleTime || 0) / matchCount) * 10) / 10,
+        avgBattleCount: Math.round(((formStat.totalBattleCount || 0) / matchCount) * 10) / 10,
+        avgHPRemaining: Math.round((formStat.totalHPRemaining || 0) / matchCount),
+        avgHPMax: Math.round((formStat.totalHPMax || 0) / matchCount),
+        avgSpecialMoves: Math.round(((formStat.totalSpecialMoves || 0) / matchCount) * 10) / 10,
+        avgUltimates: Math.round(((formStat.totalUltimates || 0) / matchCount) * 10) / 10,
+        avgSkills: Math.round(((formStat.totalSkills || 0) / matchCount) * 10) / 10,
+        avgS1Blast: Math.round(((formStat.totalS1Blast || 0) / matchCount) * 10) / 10,
+        avgS2Blast: Math.round(((formStat.totalS2Blast || 0) / matchCount) * 10) / 10,
+        avgUltBlast: Math.round(((formStat.totalUltBlast || 0) / matchCount) * 10) / 10,
+        avgS1HitBlast: Math.round(((formStat.totalS1HitBlast || 0) / matchCount) * 10) / 10,
+        avgS2HitBlast: Math.round(((formStat.totalS2HitBlast || 0) / matchCount) * 10) / 10,
+        avgULTHitBlast: Math.round(((formStat.totalULTHitBlast || 0) / matchCount) * 10) / 10,
+        avgSparking: Math.round(((formStat.totalSparking || 0) / matchCount) * 10) / 10,
+        avgCharges: Math.round(((formStat.totalCharges || 0) / matchCount) * 10) / 10,
+        avgGuards: Math.round(((formStat.totalGuards || 0) / matchCount) * 10) / 10,
+        avgEnergyBlasts: Math.round(((formStat.totalEnergyBlasts || 0) / matchCount) * 10) / 10,
+        avgZCounters: Math.round(((formStat.totalZCounters || 0) / matchCount) * 10) / 10,
+        avgSuperCounters: Math.round(((formStat.totalSuperCounters || 0) / matchCount) * 10) / 10,
+        avgRevengeCounters: Math.round(((formStat.totalRevengeCounters || 0) / matchCount) * 10) / 10,
+        avgMaxComboNum: Math.round(((formStat.totalMaxComboNum || 0) / matchCount) * 10) / 10,
+        avgMaxComboDamage: Math.round((formStat.totalMaxComboDamage || 0) / matchCount),
+        avgThrows: Math.round(((formStat.totalThrows || 0) / matchCount) * 10) / 10,
+        avgLightningAttacks: Math.round(((formStat.totalLightningAttacks || 0) / matchCount) * 10) / 10,
+        avgVanishingAttacks: Math.round(((formStat.totalVanishingAttacks || 0) / matchCount) * 10) / 10,
+        avgDragonHoming: Math.round(((formStat.totalDragonHoming || 0) / matchCount) * 10) / 10,
+        avgSpeedImpacts: Math.round(((formStat.totalSpeedImpacts || 0) / matchCount) * 10) / 10,
+        avgSpeedImpactWins: Math.round(((formStat.totalSpeedImpactWins || 0) / matchCount) * 10) / 10,
+        avgSparkingCombo: Math.round(((formStat.totalSparkingCombo || 0) / matchCount) * 10) / 10,
+        avgDragonDashMileage: Math.round(((formStat.totalDragonDashMileage || 0) / matchCount) * 10) / 10,
+        avgKills: Math.round(((formStat.totalKills || 0) / matchCount) * 10) / 10,
+        // Derived stats
+        damagePerSecond,
+        damageEfficiency,
+        // Hit rates
+        s1HitRate: (formStat.totalS1Blast || 0) > 0
+          ? Math.round(((formStat.totalS1HitBlast || 0) / formStat.totalS1Blast) * 1000) / 10
+          : null,
+        s2HitRate: (formStat.totalS2Blast || 0) > 0
+          ? Math.round(((formStat.totalS2HitBlast || 0) / formStat.totalS2Blast) * 1000) / 10
+          : null,
+        ultHitRate: (formStat.totalUltBlast || 0) > 0
+          ? Math.round(((formStat.totalULTHitBlast || 0) / formStat.totalUltBlast) * 1000) / 10
+          : null,
+        speedImpactWinRate: (formStat.totalSpeedImpacts || 0) > 0
+          ? Math.round(((formStat.totalSpeedImpactWins || 0) / formStat.totalSpeedImpacts) * 1000) / 10
+          : null,
+      };
+    });
     
     return {
       ...char,
@@ -1403,9 +1666,38 @@ function getAggregatedCharacterData(files, charMap, capsuleMap = {}, aiStrategie
       avgZCounters: Math.round((char.totalZCounters / (char.activeMatchCount > 0 ? char.activeMatchCount : char.matchCount)) * 10) / 10,
       avgSuperCounters: Math.round((char.totalSuperCounters / (char.activeMatchCount > 0 ? char.activeMatchCount : char.matchCount)) * 10) / 10,
       avgRevengeCounters: Math.round((char.totalRevengeCounters / (char.activeMatchCount > 0 ? char.activeMatchCount : char.matchCount)) * 10) / 10,
-      // Special Abilities - detailed blast averages
-    avgSPM1: Math.round((char.totalSPM1 / (char.activeMatchCount > 0 ? char.activeMatchCount : char.matchCount)) * 10) / 10,
-  avgSPM2: Math.round((char.totalSPM2 / (char.activeMatchCount > 0 ? char.activeMatchCount : char.matchCount)) * 10) / 10,
+      avgTags: Math.round((char.totalTags / (char.activeMatchCount > 0 ? char.activeMatchCount : char.matchCount)) * 10) / 10,
+      // Special Abilities - NEW blast tracking averages
+      avgS1Blast: Math.round((char.totalS1Blast / (char.activeMatchCount > 0 ? char.activeMatchCount : char.matchCount)) * 10) / 10,
+      avgS2Blast: Math.round((char.totalS2Blast / (char.activeMatchCount > 0 ? char.activeMatchCount : char.matchCount)) * 10) / 10,
+      avgUltBlast: Math.round((char.totalUltBlast / (char.activeMatchCount > 0 ? char.activeMatchCount : char.matchCount)) * 10) / 10,
+      avgS1Hit: Math.round((char.totalS1HitBlast / (char.activeMatchCount > 0 ? char.activeMatchCount : char.matchCount)) * 10) / 10,
+      avgS2Hit: Math.round((char.totalS2HitBlast / (char.activeMatchCount > 0 ? char.activeMatchCount : char.matchCount)) * 10) / 10,
+      avgUltHit: Math.round((char.totalULTHitBlast / (char.activeMatchCount > 0 ? char.activeMatchCount : char.matchCount)) * 10) / 10,
+      // Hit rates (overall across all matches) - calculated from trackable throws only, null if no trackable data
+      s1HitRateOverall: char.totalS1BlastTrackable > 0 ? Math.round((char.totalS1HitBlast / char.totalS1BlastTrackable) * 1000) / 10 : null,
+      s2HitRateOverall: char.totalS2BlastTrackable > 0 ? Math.round((char.totalS2HitBlast / char.totalS2BlastTrackable) * 1000) / 10 : null,
+      ultHitRateOverall: char.totalUltBlastTrackable > 0 ? Math.round((char.totalULTHitBlast / char.totalUltBlastTrackable) * 1000) / 10 : null,
+      
+      // DEBUG: Log final values for Panzy in Aggregated Stats
+      ...(char.name.toLowerCase().includes('panzy') ? (() => {
+        console.log('=== AGGREGATED STATS - Panzy Final Calculated Values ===');
+        console.log('totalS1Blast:', char.totalS1Blast);
+        console.log('totalS1HitBlast:', char.totalS1HitBlast);
+        console.log('totalS1BlastTrackable:', char.totalS1BlastTrackable);
+        console.log('activeMatchCount:', char.activeMatchCount);
+        console.log('matchCount:', char.matchCount);
+        const denom = (char.activeMatchCount && char.activeMatchCount > 0) ? char.activeMatchCount : char.matchCount;
+        console.log('denom for avg:', denom);
+        console.log('avgS1Blast:', Math.round((char.totalS1Blast / denom) * 10) / 10);
+        console.log('avgS1Hit:', Math.round((char.totalS1HitBlast / denom) * 10) / 10);
+        console.log('s1HitRateOverall:', char.totalS1BlastTrackable > 0 ? Math.round((char.totalS1HitBlast / char.totalS1BlastTrackable) * 1000) / 10 : null);
+        return {};
+      })() : {}),
+      
+      // Special Abilities - Legacy blast tracking (kept for backwards compatibility, now using new values)
+    avgSPM1: Math.round((char.totalS1Blast / (char.activeMatchCount > 0 ? char.activeMatchCount : char.matchCount)) * 10) / 10,
+  avgSPM2: Math.round((char.totalS2Blast / (char.activeMatchCount > 0 ? char.activeMatchCount : char.matchCount)) * 10) / 10,
   avgEXA1: Math.round((char.totalEXA1 / (char.activeMatchCount > 0 ? char.activeMatchCount : char.matchCount)) * 10) / 10,
   avgEXA2: Math.round((char.totalEXA2 / (char.activeMatchCount > 0 ? char.activeMatchCount : char.matchCount)) * 10) / 10,
   avgUltimates: Math.round((char.totalUltimates / (char.activeMatchCount > 0 ? char.activeMatchCount : char.matchCount)) * 10) / 10,
@@ -1498,10 +1790,10 @@ function getAggregatedCharacterData(files, charMap, capsuleMap = {}, aiStrategie
 function getTeamAggregatedData(files, charMap, capsuleMap = {}) {
   const teamStats = {};
   
-  files.forEach(file => {
+  files.forEach((file, index) => {
     if (file.error) return;
     
-    let teams, battleWinLose, characterRecord;
+    let teams, battleWinLose, characterRecord, characterIdRecord = null;
     
     // Handle TeamBattleResults format (current BR_Data structure)
     if (file.content.TeamBattleResults) {
@@ -1510,16 +1802,19 @@ function getTeamAggregatedData(files, charMap, capsuleMap = {}) {
       if (file.content.TeamBattleResults.battleResult) {
         battleWinLose = file.content.TeamBattleResults.battleResult.battleWinLose;
         characterRecord = file.content.TeamBattleResults.battleResult.characterRecord;
+        characterIdRecord = file.content.TeamBattleResults.battleResult.characterIdRecord;
       }
       // Check for BattleResults (capital R) - Cinema files format
       else if (file.content.TeamBattleResults.BattleResults) {
         battleWinLose = file.content.TeamBattleResults.BattleResults.battleWinLose;
         characterRecord = file.content.TeamBattleResults.BattleResults.characterRecord;
+        characterIdRecord = file.content.TeamBattleResults.BattleResults.characterIdRecord;
       }
       // Check if data is directly in TeamBattleResults (new wrapper format)
       else if (file.content.TeamBattleResults.battleWinLose && file.content.TeamBattleResults.characterRecord) {
         battleWinLose = file.content.TeamBattleResults.battleWinLose;
         characterRecord = file.content.TeamBattleResults.characterRecord;
+        characterIdRecord = file.content.TeamBattleResults.characterIdRecord;
       }
     }
     // Handle other formats
@@ -1528,11 +1823,13 @@ function getTeamAggregatedData(files, charMap, capsuleMap = {}) {
       if (file.content.teams[0]?.BattleResults) {
         battleWinLose = file.content.teams[0].BattleResults.battleWinLose;
         characterRecord = file.content.teams[0].BattleResults.characterRecord;
+        characterIdRecord = file.content.teams[0].BattleResults.characterIdRecord;
       }
     }
     else if (file.content.BattleResults) {
       battleWinLose = file.content.BattleResults.battleWinLose;
       characterRecord = file.content.BattleResults.characterRecord;
+      characterIdRecord = file.content.BattleResults.characterIdRecord;
       // Try to extract team names from file name or default
       teams = ["Team 1", "Team 2"];
     }
@@ -1662,6 +1959,9 @@ function getTeamAggregatedData(files, charMap, capsuleMap = {}) {
           teamStats[team1Name].characterDetails[stats.name] = [];
         }
         
+        // Extract original character ID for form tracking
+        const originalForm = char.battlePlayCharacter?.originalCharacter?.key || char.originalCharacter?.key;
+        
         // Store individual character match data with all detailed stats
         teamStats[team1Name].characterDetails[stats.name].push({
           damageDealt: stats.damageDone || 0,
@@ -1673,8 +1973,19 @@ function getTeamAggregatedData(files, charMap, capsuleMap = {}) {
           specialMovesUsed: stats.specialMovesUsed || 0,
           ultimatesUsed: stats.ultimatesUsed || 0,
           skillsUsed: stats.skillsUsed || 0,
-          spm1Count: stats.spm1Count || 0,
-          spm2Count: stats.spm2Count || 0,
+          // NEW blast tracking
+          s1Blast: stats.s1Blast || 0,
+          s2Blast: stats.s2Blast || 0,
+          ultBlast: stats.ultBlast || 0,
+          s1HitBlast: stats.s1HitBlast,
+          s2HitBlast: stats.s2HitBlast,
+          uLTHitBlast: stats.uLTHitBlast,
+          s1HitRate: stats.s1HitRate,
+          s2HitRate: stats.s2HitRate,
+          ultHitRate: stats.ultHitRate,
+          // Legacy blast tracking (for backwards compatibility)
+          spm1Count: stats.s1Blast || 0,
+          spm2Count: stats.s2Blast || 0,
           exa1Count: stats.exa1Count || 0,
           exa2Count: stats.exa2Count || 0,
           // Survival & Health
@@ -1685,6 +1996,7 @@ function getTeamAggregatedData(files, charMap, capsuleMap = {}) {
           zCounterCount: stats.zCounterCount || 0,
           superCounterCount: stats.superCounterCount || 0,
           revengeCounterCount: stats.revengeCounterCount || 0,
+          tags: stats.tags || 0,
           // Combat Performance
           maxComboNum: stats.maxComboNum || 0,
           maxComboDamage: stats.maxComboDamage || 0,
@@ -1697,7 +2009,12 @@ function getTeamAggregatedData(files, charMap, capsuleMap = {}) {
           sparkingComboCount: stats.sparkingComboCount || 0,
           dragonDashMileage: stats.dragonDashMileage || 0,
           kills: stats.kills || 0,
-          fileName: file.name
+          fileName: file.name,
+          // Per-form stats tracking
+          formChangeHistory: char.formChangeHistory || [],
+          originalCharacterId: originalForm,
+          characterIdRecord: characterIdRecord,
+          rawCharacterData: char // Store raw data for per-form calculation
         });
         
         // Track build archetypes
@@ -1725,6 +2042,9 @@ function getTeamAggregatedData(files, charMap, capsuleMap = {}) {
           teamStats[team2Name].characterDetails[stats.name] = [];
         }
         
+        // Extract original character ID for form tracking
+        const originalForm = char.battlePlayCharacter?.originalCharacter?.key || char.originalCharacter?.key;
+        
         // Store individual character match data with all detailed stats
         teamStats[team2Name].characterDetails[stats.name].push({
           damageDealt: stats.damageDone || 0,
@@ -1736,8 +2056,19 @@ function getTeamAggregatedData(files, charMap, capsuleMap = {}) {
           specialMovesUsed: stats.specialMovesUsed || 0,
           ultimatesUsed: stats.ultimatesUsed || 0,
           skillsUsed: stats.skillsUsed || 0,
-          spm1Count: stats.spm1Count || 0,
-          spm2Count: stats.spm2Count || 0,
+          // NEW blast tracking
+          s1Blast: stats.s1Blast || 0,
+          s2Blast: stats.s2Blast || 0,
+          ultBlast: stats.ultBlast || 0,
+          s1HitBlast: stats.s1HitBlast,
+          s2HitBlast: stats.s2HitBlast,
+          uLTHitBlast: stats.uLTHitBlast,
+          s1HitRate: stats.s1HitRate,
+          s2HitRate: stats.s2HitRate,
+          ultHitRate: stats.ultHitRate,
+          // Legacy blast tracking (for backwards compatibility)
+          spm1Count: stats.s1Blast || 0,
+          spm2Count: stats.s2Blast || 0,
           exa1Count: stats.exa1Count || 0,
           exa2Count: stats.exa2Count || 0,
           // Survival & Health
@@ -1748,6 +2079,7 @@ function getTeamAggregatedData(files, charMap, capsuleMap = {}) {
           zCounterCount: stats.zCounterCount || 0,
           superCounterCount: stats.superCounterCount || 0,
           revengeCounterCount: stats.revengeCounterCount || 0,
+          tags: stats.tags || 0,
           // Combat Performance
           maxComboNum: stats.maxComboNum || 0,
           maxComboDamage: stats.maxComboDamage || 0,
@@ -1760,7 +2092,12 @@ function getTeamAggregatedData(files, charMap, capsuleMap = {}) {
           sparkingComboCount: stats.sparkingComboCount || 0,
           dragonDashMileage: stats.dragonDashMileage || 0,
           kills: stats.kills || 0,
-          fileName: file.name
+          fileName: file.name,
+          // Per-form stats tracking
+          formChangeHistory: char.formChangeHistory || [],
+          originalCharacterId: originalForm,
+          characterIdRecord: characterIdRecord,
+          rawCharacterData: char // Store raw data for per-form calculation
         });
         
         // Track build archetypes
@@ -1803,10 +2140,6 @@ function getTeamAggregatedData(files, charMap, capsuleMap = {}) {
   // Calculate final statistics and format data
   return Object.values(teamStats).map(team => {
     team.winRate = team.matches > 0 ? Math.round((team.wins / team.matches) * 100 * 10) / 10 : 0;
-    team.avgDamagePerMatch = team.matches > 0 ? Math.round(team.totalDamageDealt / team.matches) : 0;
-    team.avgDamageTakenPerMatch = team.matches > 0 ? Math.round(team.totalDamageTaken / team.matches) : 0;
-    team.avgHealthRetention = team.totalHealthMax > 0 ? 
-      Math.round((team.totalHealthRemaining / team.totalHealthMax) * 100 * 10) / 10 : 0;
     
     // Convert character usage set to array and sort by usage frequency
     team.favoriteCharacters = Object.entries(team.characterUsageCount)
@@ -1831,6 +2164,33 @@ function getTeamAggregatedData(files, charMap, capsuleMap = {}) {
         const totalSPM2 = matches.reduce((sum, match) => sum + (match.spm2Count || 0), 0);
         const totalEXA1 = matches.reduce((sum, match) => sum + (match.exa1Count || 0), 0);
         const totalEXA2 = matches.reduce((sum, match) => sum + (match.exa2Count || 0), 0);
+        
+        // New blast tracking totals
+        const totalS1Blast = matches.reduce((sum, match) => sum + (match.s1Blast || match.spm1Count || 0), 0);
+        const totalS2Blast = matches.reduce((sum, match) => sum + (match.s2Blast || match.spm2Count || 0), 0);
+        const totalUltBlast = matches.reduce((sum, match) => sum + (match.ultBlast || 0), 0);
+        const totalS1HitBlast = matches.reduce((sum, match) => sum + (match.s1HitBlast || 0), 0);
+        const totalS2HitBlast = matches.reduce((sum, match) => sum + (match.s2HitBlast || 0), 0);
+        const totalULTHitBlast = matches.reduce((sum, match) => sum + (match.uLTHitBlast || 0), 0);
+        const totalTags = matches.reduce((sum, match) => sum + (match.tags || 0), 0);
+        
+        // Track separately for hit rate calculation (only from matches with additionalCounts data)
+        // Check each blast type individually - a match is trackable for a blast type only if that specific blast type has hit data
+        const totalS1BlastTrackable = matches.reduce((sum, match) => {
+          // Check if THIS blast type has hit data in this match
+          const hasS1HitData = (match.s1HitBlast !== undefined && match.s1HitBlast !== null);
+          return sum + (hasS1HitData ? (match.s1Blast || 0) : 0);
+        }, 0);
+        const totalS2BlastTrackable = matches.reduce((sum, match) => {
+          // Check if THIS blast type has hit data in this match
+          const hasS2HitData = (match.s2HitBlast !== undefined && match.s2HitBlast !== null);
+          return sum + (hasS2HitData ? (match.s2Blast || 0) : 0);
+        }, 0);
+        const totalUltBlastTrackable = matches.reduce((sum, match) => {
+          // Check if THIS blast type has hit data in this match
+          const hasUltHitData = (match.uLTHitBlast !== undefined && match.uLTHitBlast !== null);
+          return sum + (hasUltHitData ? (match.ultBlast || 0) : 0);
+        }, 0);
         
         // Survival & Health totals
         const totalSparking = matches.reduce((sum, match) => sum + (match.sparkingCount || 0), 0);
@@ -1857,6 +2217,23 @@ function getTeamAggregatedData(files, charMap, capsuleMap = {}) {
         const matchCount = matches.length;
         const activeMatchCount = matches.filter(m => m.battleDuration && m.battleDuration > 0).length;
         const denom = activeMatchCount > 0 ? activeMatchCount : matchCount;
+        
+        // DEBUG: Log blast tracking data for Panzy
+        if (charName && charName.toLowerCase().includes('pan')) {
+          console.log('=== TEAM RANKINGS CALCULATION - Character:', charName, '===');
+          console.log('Total matches:', matchCount);
+          console.log('Match details:', matches.map(m => ({
+            s1Blast: m.s1Blast,
+            s2Blast: m.s2Blast,
+            s1HitBlast: m.s1HitBlast,
+            s2HitBlast: m.s2HitBlast,
+            hasS1HitData: (m.s1HitBlast !== undefined && m.s1HitBlast !== null),
+            fileName: m.fileName
+          })));
+          console.log('totalS1Blast:', totalS1Blast);
+          console.log('totalS1HitBlast:', totalS1HitBlast);
+          console.log('totalS1BlastTrackable:', totalS1BlastTrackable);
+        }
         
         const avgDamageDealt = Math.round(totalDamageDealt / Math.max(denom, 1));
         const avgDamageTaken = Math.round(totalDamageTaken / Math.max(denom, 1));
@@ -1909,6 +2286,40 @@ function getTeamAggregatedData(files, charMap, capsuleMap = {}) {
           avgSPM2: Math.round((totalSPM2 / denom) * 10) / 10,
           avgEXA1: Math.round((totalEXA1 / denom) * 10) / 10,
           avgEXA2: Math.round((totalEXA2 / denom) * 10) / 10,
+          // New blast tracking averages
+          avgS1Blast: Math.round((totalS1Blast / denom) * 10) / 10,
+          avgS2Blast: Math.round((totalS2Blast / denom) * 10) / 10,
+          avgUltBlast: Math.round((totalUltBlast / denom) * 10) / 10,
+          avgS1Hit: Math.round((totalS1HitBlast / denom) * 10) / 10,
+          avgS2Hit: Math.round((totalS2HitBlast / denom) * 10) / 10,
+          avgUltHit: Math.round((totalULTHitBlast / denom) * 10) / 10,
+          s1HitRateOverall: totalS1BlastTrackable > 0 ? Math.round((totalS1HitBlast / totalS1BlastTrackable) * 1000) / 10 : null,
+          s2HitRateOverall: totalS2BlastTrackable > 0 ? Math.round((totalS2HitBlast / totalS2BlastTrackable) * 1000) / 10 : null,
+          ultHitRateOverall: totalUltBlastTrackable > 0 ? Math.round((totalULTHitBlast / totalUltBlastTrackable) * 1000) / 10 : null,
+          
+          // CRITICAL DEBUG - Force log for ALL characters to see if function is being called
+          ...(() => {
+            const s1calc = totalS1BlastTrackable > 0 ? Math.round((totalS1HitBlast / totalS1BlastTrackable) * 1000) / 10 : null;
+            console.log(`TeamRankings CALC [${charName}]: s1HitRate=${s1calc}, trackable=${totalS1BlastTrackable}`);
+            return {};
+          })(),
+          
+          avgTags: Math.round((totalTags / denom) * 10) / 10,
+          
+          // DEBUG: Log final calculated values for Panzy
+          ...(charName && charName.toLowerCase().includes('pan') ? (() => {
+            console.log('=== TEAM RANKINGS FINAL - Character:', charName, '===');
+            console.log('totalS1BlastTrackable:', totalS1BlastTrackable);
+            console.log('totalS1HitBlast:', totalS1HitBlast);
+            console.log('avgS1Blast:', Math.round((totalS1Blast / denom) * 10) / 10);
+            console.log('avgS1Hit:', Math.round((totalS1HitBlast / denom) * 10) / 10);
+            console.log('avgSPM1:', Math.round((totalSPM1 / denom) * 10) / 10);
+            const calculatedS1HitRate = totalS1BlastTrackable > 0 ? Math.round((totalS1HitBlast / totalS1BlastTrackable) * 1000) / 10 : null;
+            console.log('s1HitRateOverall CALCULATED:', calculatedS1HitRate);
+            console.log('Check: totalS1BlastTrackable > 0?', totalS1BlastTrackable > 0);
+            return {};
+          })() : {}),
+          
           // Survival & Health averages
           avgSparking: Math.round((totalSparking / denom) * 10) / 10,
           avgCharges: Math.round((totalCharges / denom) * 10) / 10,
@@ -1931,8 +2342,141 @@ function getTeamAggregatedData(files, charMap, capsuleMap = {}) {
           avgDragonDashMileage: Math.round((totalDragonDashMileage / denom) * 10) / 10,
           avgKills: Math.round((totalKills / denom) * 10) / 10
         };
+        
+        // Aggregate per-form stats for characters with transformations
+        const formStatsMap = {};
+        matches.forEach(match => {
+          // Check if this character has form changes AND characterIdRecord data
+          const hasFormChanges = Array.isArray(match.formChangeHistory) && match.formChangeHistory.length > 0;
+          const hasCharacterIdRecord = match.characterIdRecord && typeof match.characterIdRecord === 'object';
+          
+          if (hasFormChanges && hasCharacterIdRecord) {
+            const perFormStats = calculatePerFormStats(
+              match.rawCharacterData,
+              match.characterIdRecord,
+              match.formChangeHistory,
+              match.originalCharacterId
+            );
+
+            
+            perFormStats.forEach(formStat => {
+              const formId = formStat.formId;
+              if (!formStatsMap[formId]) {
+                formStatsMap[formId] = {
+                  formId: formId,
+                  formNumber: formStat.formNumber,
+                  isFirstForm: formStat.isFirstForm,
+                  isFinalForm: formStat.isFinalForm,
+                  totalDamageDone: 0,
+                  totalDamageTaken: 0,
+                  totalBattleTime: 0,
+                  totalBattleCount: 0,
+                  totalHPRemaining: 0,
+                  totalHPMax: 0,
+                  totalSpecialMoves: 0,
+                  totalUltimates: 0,
+                  totalS1Blast: 0,
+                  totalS2Blast: 0,
+                  totalUltBlast: 0,
+                  totalS1HitBlast: 0,
+                  totalS2HitBlast: 0,
+                  totalULTHitBlast: 0,
+                  totalKills: 0,
+                  matches: 0
+                };
+              }
+              
+              formStatsMap[formId].totalDamageDone += formStat.damageDone || 0;
+              formStatsMap[formId].totalDamageTaken += formStat.damageTaken || 0;
+              formStatsMap[formId].totalBattleTime += formStat.battleTime || 0;
+              formStatsMap[formId].totalHPRemaining += formStat.hpRemaining || 0;
+              formStatsMap[formId].totalHPMax += (formStat.hpRemaining || 0);
+              formStatsMap[formId].totalSpecialMoves += formStat.specialMovesUsed || 0;
+              formStatsMap[formId].totalUltimates += formStat.ultimatesUsed || 0;
+              formStatsMap[formId].totalS1Blast += formStat.s1Blast || 0;
+              formStatsMap[formId].totalS2Blast += formStat.s2Blast || 0;
+              formStatsMap[formId].totalUltBlast += formStat.ultBlast || 0;
+              formStatsMap[formId].totalS1HitBlast += (formStat.s1HitBlast || 0);
+              formStatsMap[formId].totalS2HitBlast += (formStat.s2HitBlast || 0);
+              formStatsMap[formId].totalULTHitBlast += (formStat.uLTHitBlast || 0);
+              formStatsMap[formId].totalKills += formStat.kills || 0;
+              formStatsMap[formId].matches += 1;
+            });
+          }
+        });
+        
+        // Calculate averages for each form
+        const aggregatedFormStats = Object.values(formStatsMap).map(formData => {
+          const matchCount = formData.matches;
+          const avgDamageDone = matchCount > 0 ? formData.totalDamageDone / matchCount : 0;
+          const avgDamageTaken = matchCount > 0 ? formData.totalDamageTaken / matchCount : 0;
+          const avgBattleTime = matchCount > 0 ? formData.totalBattleTime / matchCount : 0;
+          
+          // Calculate derived stats
+          const damageEfficiency = avgDamageTaken > 0 ? avgDamageDone / avgDamageTaken : 0;
+          const damagePerSecond = avgBattleTime > 0 ? avgDamageDone / avgBattleTime : 0;
+          
+          return {
+            formId: formData.formId,
+            formNumber: formData.formNumber,
+            characterName: charMap[formData.formId] || formData.formId,
+            isFirstForm: formData.isFirstForm,
+            isFinalForm: formData.isFinalForm,
+            avgDamageDone: avgDamageDone,
+            avgDamageTaken: avgDamageTaken,
+            avgBattleTime: avgBattleTime,
+            avgHPRemaining: matchCount > 0 ? formData.totalHPRemaining / matchCount : 0,
+            avgSpecialMoves: matchCount > 0 ? formData.totalSpecialMoves / matchCount : 0,
+            avgUltimates: matchCount > 0 ? formData.totalUltimates / matchCount : 0,
+            avgS1Blast: matchCount > 0 ? formData.totalS1Blast / matchCount : 0,
+            avgS2Blast: matchCount > 0 ? formData.totalS2Blast / matchCount : 0,
+            avgUltBlast: matchCount > 0 ? formData.totalUltBlast / matchCount : 0,
+            avgS1HitBlast: matchCount > 0 ? formData.totalS1HitBlast / matchCount : 0,
+            avgS2HitBlast: matchCount > 0 ? formData.totalS2HitBlast / matchCount : 0,
+            avgULTHitBlast: matchCount > 0 ? formData.totalULTHitBlast / matchCount : 0,
+            avgKills: matchCount > 0 ? formData.totalKills / matchCount : 0,
+            damageEfficiency: damageEfficiency,
+            damagePerSecond: damagePerSecond,
+            matchesPlayed: matchCount
+          };
+        }).sort((a, b) => a.formNumber - b.formNumber);
+        
+        // Add form stats to character averages
+        if (aggregatedFormStats.length > 0) {
+          team.characterAverages[charName].formStats = aggregatedFormStats;
+          
+          // Build form change history text
+          const formNames = aggregatedFormStats.map(f => f.characterName);
+          team.characterAverages[charName].formChangeHistoryText = formNames.join(' → ');
+          
+          // Store raw form change history for component
+          team.characterAverages[charName].formChangeHistory = matches[0]?.formChangeHistory || [];
+        }
       }
     });
+    
+    // Get top 5 characters by performance score for team-level stats (matching Team Performance Matrix logic)
+    const top5Characters = Object.entries(team.characterAverages)
+      .sort((a, b) => (b[1].performanceScore || 0) - (a[1].performanceScore || 0))
+      .slice(0, 5)
+      .map(([name, stats]) => ({ name, ...stats }));
+    
+    // Calculate team-level stats based on top 5 characters
+    const top5TotalDamage = top5Characters.reduce((sum, char) => sum + char.avgDamageDealt, 0);
+    const top5TotalTaken = top5Characters.reduce((sum, char) => sum + char.avgDamageTaken, 0);
+    const top5TotalMaxHP = top5Characters.reduce((sum, char) => sum + char.avgHealthMax, 0);
+    const top5TotalHPLeft = top5Characters.reduce((sum, char) => sum + char.avgHealthRemaining, 0);
+    
+    // Team-level calculated stats from top 5
+    team.avgDamagePerMatch = Math.round(top5TotalDamage);
+    team.avgDamageTakenPerMatch = Math.round(top5TotalTaken);
+    team.avgHealthRetention = top5TotalMaxHP > 0 ? 
+      Math.round((top5TotalHPLeft / top5TotalMaxHP) * 1000) / 10 : 0;
+    team.top5Efficiency = top5TotalTaken > 0 ? 
+      Math.round((top5TotalDamage / top5TotalTaken) * 100) / 100 : 0;
+    
+    // Store top 5 character names for UI highlighting
+    team.top5CharacterNames = top5Characters.map(c => c.name);
     
     // Convert set to count for UI display
     team.uniqueCharactersUsed = team.charactersUsed.size;
@@ -2407,6 +2951,17 @@ export default function App() {
       const validFiles = results.filter(f => !f.error);
       if (validFiles.length === 1) {
         setFileContent(validFiles[0].content);
+        setAnalysisFileContent(validFiles[0].content);
+        setAnalysisSelectedFilePath([validFiles[0].name]);
+        setSelectedFilePath([validFiles[0].name]);
+        setViewType('single');
+      } else if (validFiles.length > 1) {
+        // For multiple files, keep fileContent as null initially
+        // Users can select a view type (aggregated, teams, etc.) or select a specific file
+        setFileContent(null);
+        setAnalysisFileContent(null);
+        setAnalysisSelectedFilePath(null);
+        setSelectedFilePath(null);
       } else {
         setFileContent(null);
       }
@@ -2447,12 +3002,15 @@ export default function App() {
   const handleManualFileSelect = (fileName) => {
     const file = manualFiles.find(f => f.name === fileName);
     if (file && !file.error) {
+      // Set the single file content for single match view
       setFileContent(file.content);
       // keep global selected path in sync for compatibility
       setSelectedFilePath([file.name]);
       // Also set analysis-specific state so the header/search-driven analysis area shows this file
       setAnalysisFileContent(file.content);
       setAnalysisSelectedFilePath([file.name]);
+      // Automatically switch to single view when manually selecting a file
+      setViewType('single');
     }
     setExpandedRows({});
   };
@@ -2608,6 +3166,9 @@ export default function App() {
   const analysisContent = analysisFileContent || fileContent;
   const analysisSelectedPath = analysisSelectedFilePath || selectedFilePath;
 
+  // Also need characterIdRecord for per-form stats
+  let characterIdRecord = null;
+
   if (analysisContent && typeof analysisContent === 'object') {
     // Handle TeamBattleResults format (current BR_Data structure)
     if (analysisContent.TeamBattleResults && typeof analysisContent.TeamBattleResults === 'object') {
@@ -2616,13 +3177,16 @@ export default function App() {
       if (teamBattleResults.battleResult) {
         battleWinLose = teamBattleResults.battleResult.battleWinLose;
         characterRecord = teamBattleResults.battleResult.characterRecord;
+        characterIdRecord = teamBattleResults.battleResult.characterIdRecord;
       } else if (teamBattleResults.BattleResults) {
         battleWinLose = teamBattleResults.BattleResults.battleWinLose;
         characterRecord = teamBattleResults.BattleResults.characterRecord;
+        characterIdRecord = teamBattleResults.BattleResults.characterIdRecord;
       } else if (teamBattleResults.battleWinLose && teamBattleResults.characterRecord) {
         // Direct properties in TeamBattleResults (new wrapper format)
         battleWinLose = teamBattleResults.battleWinLose;
         characterRecord = teamBattleResults.characterRecord;
+        characterIdRecord = teamBattleResults.characterIdRecord;
       }
     }
     // Handle new format with teams array at the top
@@ -2631,20 +3195,24 @@ export default function App() {
       if (firstTeam.BattleResults) {
         battleWinLose = firstTeam.BattleResults.battleWinLose;
         characterRecord = firstTeam.BattleResults.characterRecord;
+        characterIdRecord = firstTeam.BattleResults.characterIdRecord;
       } else if (firstTeam.battleWinLose) {
         battleWinLose = firstTeam.battleWinLose;
         characterRecord = firstTeam.characterRecord;
+        characterIdRecord = firstTeam.characterIdRecord;
       }
     } 
     // Handle standard format with BattleResults at root
     else if (analysisContent.BattleResults) {
       battleWinLose = analysisContent.BattleResults.battleWinLose;
       characterRecord = analysisContent.BattleResults.characterRecord;
+      characterIdRecord = analysisContent.BattleResults.characterIdRecord;
     } 
     // Handle legacy format with direct properties
     else if (analysisContent.battleWinLose && analysisContent.characterRecord) {
       battleWinLose = analysisContent.battleWinLose;
       characterRecord = analysisContent.characterRecord;
+      characterIdRecord = analysisContent.characterIdRecord;
     }
     // Fallback: recursively search for BattleResults in nested structure
     else {
@@ -3197,7 +3765,56 @@ export default function App() {
                       </p>
                     </div>
                   )}
+                  
+                  {/* Helpful hint for multiple file uploads in single view mode */}
+                  {manualFiles.filter(f => !f.error).length > 1 && viewType === 'single' && (
+                    <div className={`mt-3 p-3 rounded-lg border flex items-start gap-2 ${
+                      darkMode 
+                        ? 'bg-yellow-900/20 border-yellow-700 text-yellow-300' 
+                        : 'bg-yellow-50 border-yellow-200 text-yellow-700'
+                    }`}>
+                      <Info className="w-4 h-4 mt-0.5 flex-shrink-0" />
+                      <p className="text-xs">
+                        <strong>Note:</strong> {manualFiles.filter(f => !f.error).length} files uploaded. Select a specific file below to view single match details, or switch to Aggregated Stats/Team Rankings to analyze all files together.
+                      </p>
+                    </div>
+                  )}
                 </div>
+                
+                {/* File Selection Dropdown for Single View */}
+                {viewType === 'single' && manualFiles.filter(f => !f.error).length > 1 && (
+                  <div className={`mt-4 p-4 rounded-xl border ${
+                    darkMode ? 'bg-gray-700 border-gray-600' : 'bg-gray-50 border-gray-200'
+                  }`}>
+                    <label className={`block text-sm font-medium mb-2 ${
+                      darkMode ? 'text-gray-300' : 'text-gray-700'
+                    }`}>
+                      Select a match to analyze:
+                    </label>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                      {manualFiles.filter(f => !f.error).map((file) => (
+                        <button
+                          key={file.name}
+                          onClick={() => handleManualFileSelect(file.name)}
+                          className={`p-3 rounded-lg border-2 text-left transition-all ${
+                            analysisSelectedFilePath && analysisSelectedFilePath[0] === file.name
+                              ? darkMode
+                                ? 'border-blue-500 bg-blue-900/30 text-blue-300'
+                                : 'border-blue-500 bg-blue-50 text-blue-700'
+                              : darkMode
+                                ? 'border-gray-600 bg-gray-800 hover:border-gray-500 text-gray-300'
+                                : 'border-gray-200 bg-white hover:border-gray-300 text-gray-700'
+                          }`}
+                        >
+                          <div className="flex items-center gap-2">
+                            <FileText className="w-4 h-4" />
+                            <span className="text-sm font-medium truncate">{file.name.replace(/\.json$/i, '')}</span>
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
                 
                 {viewType === 'single' && manualFiles.length === 1 && !manualFiles[0].error ? (
                   <button 
@@ -4011,6 +4628,10 @@ export default function App() {
                                     <span className={`${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>Survival Rate:</span>
                                     <strong className={`${darkMode ? 'text-white' : 'text-gray-900'}`}>{char.survivalRate.toFixed(1)}%</strong>
                                   </div>
+                                  <div className="flex justify-between">
+                                    <span className={`${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>Swaps (Tags):</span>
+                                    <strong className={`${darkMode ? 'text-teal-400' : 'text-teal-600'}`}>{char.avgTags || 0}</strong>
+                                  </div>
                                 </div>
                                 <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 text-xs pt-2 border-t border-gray-600">
                                   <div className="flex justify-between">
@@ -4038,20 +4659,95 @@ export default function App() {
                                   <Zap className={`w-5 h-5 ${darkMode ? 'text-purple-400' : 'text-purple-600'}`} />
                                   <h4 className={`text-sm font-bold ${darkMode ? 'text-white' : 'text-gray-800'}`}>Special Abilities</h4>
                                 </div>
-                                <div className="space-y-2 text-sm mb-2">
-                                  <div className="flex justify-between">
-                                    <span className={`${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>Super 1 Blasts:</span>
-                                    <strong className={`${darkMode ? 'text-white' : 'text-gray-900'}`}>{char.avgSPM1}</strong>
+                                {/* DEBUG: Log UI values for Panzy */}
+                                {char.name.toLowerCase().includes('panzy') && (() => {
+                                  console.log('=== AGGREGATED STATS UI - Panzy Display Values ===');
+                                  console.log('char object:', char);
+                                  console.log('avgS1Hit:', char.avgS1Hit);
+                                  console.log('avgS1Blast:', char.avgS1Blast);
+                                  console.log('avgSPM1:', char.avgSPM1);
+                                  console.log('s1HitRateOverall:', char.s1HitRateOverall);
+                                  return null;
+                                })()}
+                                {/* Check if we have hit rate data (new format) or legacy format */}
+                                {char.s1HitRateOverall !== null || char.s2HitRateOverall !== null || char.ultHitRateOverall !== null ? (
+                                  // New format - show hit/thrown/rate
+                                  <div className="space-y-2 text-sm mb-2">
+                                    <div className="flex justify-between">
+                                      <span className={`${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>Super 1 Blasts:</span>
+                                      <div className="flex items-center gap-2">
+                                        <strong className={`${darkMode ? 'text-yellow-400' : 'text-yellow-600'}`}>
+                                          {(char.avgS1Hit || 0).toFixed(1)}/{(char.avgS1Blast || char.avgSPM1 || 0).toFixed(1)}
+                                        </strong>
+                                        {char.s1HitRateOverall !== null && char.s1HitRateOverall !== undefined && (
+                                          <span className={`text-xs font-mono ${
+                                            char.s1HitRateOverall >= 70 ? (darkMode ? 'text-green-400' : 'text-green-600') :
+                                            char.s1HitRateOverall >= 50 ? (darkMode ? 'text-yellow-400' : 'text-yellow-600') :
+                                            (darkMode ? 'text-red-400' : 'text-red-600')
+                                          }`}>
+                                            ({char.s1HitRateOverall.toFixed(1)}%)
+                                          </span>
+                                        )}
+                                      </div>
+                                    </div>
+                                    <div className="flex justify-between">
+                                      <span className={`${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>Super 2 Blasts:</span>
+                                      <div className="flex items-center gap-2">
+                                        <strong className={`${darkMode ? 'text-yellow-400' : 'text-yellow-600'}`}>
+                                          {(char.avgS2Hit || 0).toFixed(1)}/{(char.avgS2Blast || char.avgSPM2 || 0).toFixed(1)}
+                                        </strong>
+                                        {char.s2HitRateOverall !== null && char.s2HitRateOverall !== undefined && (
+                                          <span className={`text-xs font-mono ${
+                                            char.s2HitRateOverall >= 70 ? (darkMode ? 'text-green-400' : 'text-green-600') :
+                                            char.s2HitRateOverall >= 50 ? (darkMode ? 'text-yellow-400' : 'text-yellow-600') :
+                                            (darkMode ? 'text-red-400' : 'text-red-600')
+                                          }`}>
+                                            ({char.s2HitRateOverall.toFixed(1)}%)
+                                          </span>
+                                        )}
+                                      </div>
+                                    </div>
+                                    <div className="flex justify-between">
+                                      <span className={`${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>Ultimate Blasts:</span>
+                                      <div className="flex items-center gap-2">
+                                        <strong className={`${darkMode ? 'text-cyan-400' : 'text-cyan-600'}`}>
+                                          {(char.avgUltHit || 0).toFixed(1)}/{(char.avgUltBlast || char.avgUltimates || 0).toFixed(1)}
+                                        </strong>
+                                        {char.ultHitRateOverall !== null && char.ultHitRateOverall !== undefined && (
+                                          <span className={`text-xs font-mono ${
+                                            char.ultHitRateOverall >= 70 ? (darkMode ? 'text-green-400' : 'text-green-600') :
+                                            char.ultHitRateOverall >= 50 ? (darkMode ? 'text-yellow-400' : 'text-yellow-600') :
+                                            (darkMode ? 'text-red-400' : 'text-red-600')
+                                          }`}>
+                                            ({char.ultHitRateOverall.toFixed(1)}%)
+                                          </span>
+                                        )}
+                                      </div>
+                                    </div>
                                   </div>
-                                  <div className="flex justify-between">
-                                    <span className={`${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>Super 2 Blasts:</span>
-                                    <strong className={`${darkMode ? 'text-white' : 'text-gray-900'}`}>{char.avgSPM2}</strong>
+                                ) : (
+                                  // Legacy format - show only thrown count
+                                  <div className="space-y-2 text-sm mb-2">
+                                    <div className="flex justify-between">
+                                      <span className={`${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>Super 1 Blasts:</span>
+                                      <strong className={`${darkMode ? 'text-yellow-400' : 'text-yellow-600'}`}>
+                                        {char.avgSPM1}
+                                      </strong>
+                                    </div>
+                                    <div className="flex justify-between">
+                                      <span className={`${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>Super 2 Blasts:</span>
+                                      <strong className={`${darkMode ? 'text-yellow-400' : 'text-yellow-600'}`}>
+                                        {char.avgSPM2}
+                                      </strong>
+                                    </div>
+                                    <div className="flex justify-between">
+                                      <span className={`${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>Ultimate Blasts:</span>
+                                      <strong className={`${darkMode ? 'text-cyan-400' : 'text-cyan-600'}`}>
+                                        {char.avgUltimates}
+                                      </strong>
+                                    </div>
                                   </div>
-                                  <div className="flex justify-between">
-                                    <span className={`${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>Ultimate Blasts:</span>
-                                    <strong className={`${darkMode ? 'text-white' : 'text-gray-900'}`}>{char.avgUltimates}</strong>
-                                  </div>
-                                </div>
+                                )}
                                 <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 text-xs pt-2 border-t border-gray-600">
                                   <div className="flex justify-between">
                                     <span className={`${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>Skill 1 Usage:</span>
@@ -4081,26 +4777,13 @@ export default function App() {
                               </div>
                             </div>
                           </div>
-                          {/* Forms & Transformations */}
-                          {char.hasMultipleForms && (
-                            <div className={`rounded-lg p-3 ${
-                              darkMode 
-                                ? 'bg-yellow-900/20 border border-yellow-700' 
-                                : 'bg-yellow-50 border border-yellow-200'
-                            }`}>
-                              <div className="flex items-center gap-2">
-                                <Star className={`w-4 h-4 ${darkMode ? 'text-yellow-400' : 'text-yellow-600'}`} />
-                                <span className={`text-sm font-semibold ${darkMode ? 'text-yellow-300' : 'text-yellow-800'}`}>Forms Used:</span>
-                                {char.formHistory && (
-                                  <div className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
-                                    {char.formHistory}
-                                  </div>
-                                )}
-                              </div>
-                              <div className={`text-sm ${darkMode ? 'text-yellow-200' : 'text-yellow-700'}`}>
-                                {char.formStatsArray.map(f => f.name).join(', ')}
-                              </div>
-                            </div>
+                          {/* Forms & Transformations - Expandable Per-Form Stats */}
+                          {char.hasMultipleForms && char.formStatsArray && char.formStatsArray.length > 0 && (
+                            <PerFormStatsDisplayAggregated
+                              formStatsArray={char.formStatsArray}
+                              formChangeHistoryText={char.formHistory}
+                              darkMode={darkMode}
+                            />
                           )}
                         </div>
                       </div>
@@ -4478,7 +5161,7 @@ export default function App() {
 
         {/* Single File Analysis Results */}
         {((mode === 'reference' && (analysisSelectedFilePath || selectedFilePath) && viewType === 'single') || 
-          (mode === 'manual' && (((analysisSelectedFilePath && analysisFileContent) || (selectedFilePath && fileContent)) && viewType === 'single'))) && (
+          (mode === 'manual' && viewType === 'single' && (analysisFileContent || fileContent))) && (
           <div className={`rounded-2xl shadow-xl p-6 ${darkMode ? 'bg-gray-800' : 'bg-white'}`}>
             <div className="relative mb-2">  
               <div className={`flex left-3 top-1/2 transform -translate-y-1/2 text-sm font-medium mb-2 gap-2 ${darkMode ? 'text-gray-300' : 'text-gray-500'}`}>
@@ -4668,6 +5351,7 @@ export default function App() {
                       const performanceScore = calculateMatchPerformanceScore(stats);
                       const efficiency = stats.damageTaken > 0 ? (stats.damageDone / stats.damageTaken).toFixed(2) : '∞';
                       const dps = stats.battleTime > 0 ? Math.round(stats.damageDone / stats.battleTime) : 0;
+                      const play = char.battlePlayCharacter || {};
                       
                       return (
                         <div key={i} className={`rounded-lg p-4 border ${darkMode ? 'bg-gray-700 border-gray-600' : 'bg-white border-gray-200'}`}>
@@ -4736,21 +5420,105 @@ export default function App() {
                             {stats.revengeCounterCount > 0 && (
                               <MetricDisplay label="Revenge Counters" value={stats.revengeCounterCount} color="orange" darkMode={darkMode} size="small" />
                             )}
+                            {stats.tags > 0 && (
+                              <MetricDisplay label="Tags" value={stats.tags} color="teal" darkMode={darkMode} size="small" />
+                            )}
                           </div>
                         </StatGroup>
                         
                         {/* Special Abilities Section */}
                         <StatGroup title="Special Abilities" icon={Zap} darkMode={darkMode} iconColor="yellow" collapsible={true} defaultCollapsed={false}>
-                          <div className="grid grid-cols-2 gap-2">
-                            <MetricDisplay label="Super 1 Blasts" value={stats.spm1Count} color="orange" darkMode={darkMode} size="small" />
-                            <MetricDisplay label="Super 2 Blasts" value={stats.spm2Count} color="red" darkMode={darkMode} size="small" />
-                            <MetricDisplay label="Skill 1" value={stats.exa1Count} color="purple" darkMode={darkMode} size="small" />
-                            <MetricDisplay label="Skill 2" value={stats.exa2Count} color="purple" darkMode={darkMode} size="small" />
-                            <MetricDisplay label="Ultimates" value={stats.ultimatesUsed} color="yellow" darkMode={darkMode} size="small" />
-                            <MetricDisplay label="Sparking Mode" value={stats.sparkingCount} color="yellow" darkMode={darkMode} size="small" />
-                            <MetricDisplay label="Ki Charges" value={stats.chargeCount} color="blue" darkMode={darkMode} size="small" />
-                            <MetricDisplay label="Ki Blasts" value={stats.shotEnergyBulletCount} color="blue" darkMode={darkMode} size="small" />
-                          </div>
+                          {stats.hasAdditionalCounts ? (
+                            // New format - show hit/thrown/rate for all blast types
+                            <div className="space-y-3">
+                              <BlastMetricDisplay 
+                                label="Super 1 Blast" 
+                                thrown={stats.s1Blast || 0}
+                                hit={stats.s1HitBlast || 0}
+                                hitRate={stats.s1HitRate ?? null}
+                                color="yellow"
+                                darkMode={darkMode}
+                                size="small"
+                                legacyMode={false}
+                              />
+                              
+                              <BlastMetricDisplay 
+                                label="Super 2 Blast" 
+                                thrown={stats.s2Blast || 0}
+                                hit={stats.s2HitBlast || 0}
+                                hitRate={stats.s2HitRate ?? null}
+                                color="yellow"
+                                darkMode={darkMode}
+                                size="small"
+                                legacyMode={false}
+                              />
+                              
+                              <BlastMetricDisplay 
+                                label="Ultimate Blast" 
+                                thrown={stats.ultBlast || 0}
+                                hit={stats.uLTHitBlast || 0}
+                                hitRate={stats.ultHitRate ?? null}
+                                color="cyan"
+                                darkMode={darkMode}
+                                size="small"
+                                legacyMode={false}
+                              />
+                              
+                              {/* Other Abilities (always shown) */}
+                              <div className={`grid grid-cols-2 gap-2 pt-3 ${
+                                darkMode ? 'border-t border-gray-600' : 'border-t border-gray-300'
+                              }`}>
+                                <MetricDisplay label="Skill 1" value={stats.exa1Count} color="purple" darkMode={darkMode} size="small" />
+                                <MetricDisplay label="Skill 2" value={stats.exa2Count} color="purple" darkMode={darkMode} size="small" />
+                                <MetricDisplay label="Ki Charges" value={stats.chargeCount} color="blue" darkMode={darkMode} size="small" />
+                                <MetricDisplay label="Ki Blasts" value={stats.shotEnergyBulletCount} color="blue" darkMode={darkMode} size="small" />
+                                <MetricDisplay label="Sparking Mode" value={stats.sparkingCount} color="yellow" darkMode={darkMode} size="small" />
+                                <MetricDisplay label="Dragon Dash Mileage" value={stats.dragonDashMileage} color="gray" darkMode={darkMode} size="small" />
+                              </div>
+                            </div>
+                          ) : (
+                            // Old format - show only thrown count for blast types
+                            <div className="space-y-3">
+                              <BlastMetricDisplay 
+                                label="Super 1 Blast" 
+                                thrown={stats.spm1Count || 0}
+                                color="yellow"
+                                darkMode={darkMode}
+                                size="small"
+                                legacyMode={true}
+                              />
+                              
+                              <BlastMetricDisplay 
+                                label="Super 2 Blast" 
+                                thrown={stats.spm2Count || 0}
+                                color="yellow"
+                                darkMode={darkMode}
+                                size="small"
+                                legacyMode={true}
+                              />
+                              
+                              <BlastMetricDisplay 
+                                label="Ultimate Blast" 
+                                thrown={stats.ultimatesUsed || 0}
+                                color="cyan"
+                                darkMode={darkMode}
+                                size="small"
+                                legacyMode={true}
+                              />
+                              
+                              {/* Other Abilities (always shown) */}
+                              <div className={`grid grid-cols-2 gap-2 pt-3 ${
+                                darkMode ? 'border-t border-gray-600' : 'border-t border-gray-300'
+                              }`}>
+                                <MetricDisplay label="Skill 1" value={stats.exa1Count} color="purple" darkMode={darkMode} size="small" />
+                                <MetricDisplay label="Skill 2" value={stats.exa2Count} color="purple" darkMode={darkMode} size="small" />
+                                <MetricDisplay label="Ki Charges" value={stats.chargeCount} color="blue" darkMode={darkMode} size="small" />
+                                <MetricDisplay label="Ki Blasts" value={stats.shotEnergyBulletCount} color="blue" darkMode={darkMode} size="small" />
+                                <MetricDisplay label="Sparking Mode" value={stats.sparkingCount} color="yellow" darkMode={darkMode} size="small" />
+                                <MetricDisplay label="Dragon Dash Mileage" value={stats.dragonDashMileage} color="gray" darkMode={darkMode} size="small" />
+                              </div>
+                            </div>
+                          )}
                         </StatGroup>
 
                         {/* Combat Mechanics Section (Collapsible) */}
@@ -4776,22 +5544,16 @@ export default function App() {
                           <BuildDisplay stats={stats} showDetailed={true} darkMode={darkMode} />
                         </StatGroup>
                         
-                        {/* Forms Used Display */}
-                        {stats.formChangeHistory && (
-                          <div className={`mt-3 p-3 rounded-lg ${
-                            darkMode 
-                              ? 'bg-yellow-900/20 border border-yellow-700' 
-                              : 'bg-yellow-50 border border-yellow-200'
-                          }`}>
-                            <div className="flex items-center gap-2 mb-1">
-                              <Star className={`w-4 h-4 ${darkMode ? 'text-yellow-400' : 'text-yellow-600'}`} />
-                              <span className={`text-sm font-semibold ${darkMode ? 'text-yellow-300' : 'text-yellow-800'}`}>Forms Used</span>
-                            </div>
-                            <div className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
-                              {stats.formChangeHistory}
-                            </div>
-                          </div>
-                        )}
+                        {/* Forms Used Display - Expandable Per-Form Stats */}
+                        <PerFormStatsDisplay
+                          characterRecord={char}
+                          characterIdRecord={characterIdRecord}
+                          formChangeHistory={char.formChangeHistory}
+                          formChangeHistoryText={stats.formChangeHistory}
+                          originalCharacterId={play.originalCharacter?.key}
+                          charMap={charMap}
+                          darkMode={darkMode}
+                        />
                       </div>
                     );
                   });
@@ -4870,6 +5632,7 @@ export default function App() {
                       const performanceScore = calculateMatchPerformanceScore(stats);
                       const efficiency = stats.damageTaken > 0 ? (stats.damageDone / stats.damageTaken).toFixed(2) : '∞';
                       const dps = stats.battleTime > 0 ? Math.round(stats.damageDone / stats.battleTime) : 0;
+                      const play = char.battlePlayCharacter || {};
                       
                       return (
                         <div key={i} className={`rounded-lg p-4 border ${darkMode ? 'bg-gray-700 border-gray-600' : 'bg-white border-gray-200'}`}>
@@ -4938,21 +5701,105 @@ export default function App() {
                             {stats.revengeCounterCount > 0 && (
                               <MetricDisplay label="Revenge Counters" value={stats.revengeCounterCount} color="orange" darkMode={darkMode} size="small" />
                             )}
+                            {stats.tags > 0 && (
+                              <MetricDisplay label="Tags" value={stats.tags} color="teal" darkMode={darkMode} size="small" />
+                            )}
                           </div>
                         </StatGroup>
                         
                         {/* Special Abilities Section */}
                         <StatGroup title="Special Abilities" icon={Zap} darkMode={darkMode} iconColor="yellow" collapsible={true} defaultCollapsed={false}>
-                          <div className="grid grid-cols-2 gap-2">
-                            <MetricDisplay label="Super 1 Blasts" value={stats.spm1Count} color="orange" darkMode={darkMode} size="small" />
-                            <MetricDisplay label="Super 2 Blasts" value={stats.spm2Count} color="red" darkMode={darkMode} size="small" />
-                            <MetricDisplay label="Skill 1" value={stats.exa1Count} color="purple" darkMode={darkMode} size="small" />
-                            <MetricDisplay label="Skill 2" value={stats.exa2Count} color="purple" darkMode={darkMode} size="small" />
-                            <MetricDisplay label="Ultimates" value={stats.ultimatesUsed} color="yellow" darkMode={darkMode} size="small" />
-                            <MetricDisplay label="Sparking Mode" value={stats.sparkingCount} color="yellow" darkMode={darkMode} size="small" />
-                            <MetricDisplay label="Ki Charges" value={stats.chargeCount} color="blue" darkMode={darkMode} size="small" />
-                            <MetricDisplay label="Ki Blasts" value={stats.shotEnergyBulletCount} color="blue" darkMode={darkMode} size="small" />
-                          </div>
+                          {stats.hasAdditionalCounts ? (
+                            // New format - show hit/thrown/rate for all blast types
+                            <div className="space-y-3">
+                              <BlastMetricDisplay 
+                                label="Super 1 Blast" 
+                                thrown={stats.s1Blast || 0}
+                                hit={stats.s1HitBlast || 0}
+                                hitRate={stats.s1HitRate ?? null}
+                                color="yellow"
+                                darkMode={darkMode}
+                                size="small"
+                                legacyMode={false}
+                              />
+                              
+                              <BlastMetricDisplay 
+                                label="Super 2 Blast" 
+                                thrown={stats.s2Blast || 0}
+                                hit={stats.s2HitBlast || 0}
+                                hitRate={stats.s2HitRate ?? null}
+                                color="yellow"
+                                darkMode={darkMode}
+                                size="small"
+                                legacyMode={false}
+                              />
+                              
+                              <BlastMetricDisplay 
+                                label="Ultimate Blast" 
+                                thrown={stats.ultBlast || 0}
+                                hit={stats.uLTHitBlast || 0}
+                                hitRate={stats.ultHitRate ?? null}
+                                color="cyan"
+                                darkMode={darkMode}
+                                size="small"
+                                legacyMode={false}
+                              />
+                              
+                              {/* Other Abilities (always shown) */}
+                              <div className={`grid grid-cols-2 gap-2 pt-3 ${
+                                darkMode ? 'border-t border-gray-600' : 'border-t border-gray-300'
+                              }`}>
+                                <MetricDisplay label="Skill 1" value={stats.exa1Count} color="purple" darkMode={darkMode} size="small" />
+                                <MetricDisplay label="Skill 2" value={stats.exa2Count} color="purple" darkMode={darkMode} size="small" />
+                                <MetricDisplay label="Ki Charges" value={stats.chargeCount} color="blue" darkMode={darkMode} size="small" />
+                                <MetricDisplay label="Ki Blasts" value={stats.shotEnergyBulletCount} color="blue" darkMode={darkMode} size="small" />
+                                <MetricDisplay label="Sparking Mode" value={stats.sparkingCount} color="yellow" darkMode={darkMode} size="small" />
+                                <MetricDisplay label="Dragon Dash Mileage" value={stats.dragonDashMileage} color="gray" darkMode={darkMode} size="small" />
+                              </div>
+                            </div>
+                          ) : (
+                            // Old format - show only thrown count for blast types
+                            <div className="space-y-3">
+                              <BlastMetricDisplay 
+                                label="Super 1 Blast" 
+                                thrown={stats.spm1Count || 0}
+                                color="yellow"
+                                darkMode={darkMode}
+                                size="small"
+                                legacyMode={true}
+                              />
+                              
+                              <BlastMetricDisplay 
+                                label="Super 2 Blast" 
+                                thrown={stats.spm2Count || 0}
+                                color="yellow"
+                                darkMode={darkMode}
+                                size="small"
+                                legacyMode={true}
+                              />
+                              
+                              <BlastMetricDisplay 
+                                label="Ultimate Blast" 
+                                thrown={stats.ultimatesUsed || 0}
+                                color="cyan"
+                                darkMode={darkMode}
+                                size="small"
+                                legacyMode={true}
+                              />
+                              
+                              {/* Other Abilities (always shown) */}
+                              <div className={`grid grid-cols-2 gap-2 pt-3 ${
+                                darkMode ? 'border-t border-gray-600' : 'border-t border-gray-300'
+                              }`}>
+                                <MetricDisplay label="Skill 1" value={stats.exa1Count} color="purple" darkMode={darkMode} size="small" />
+                                <MetricDisplay label="Skill 2" value={stats.exa2Count} color="purple" darkMode={darkMode} size="small" />
+                                <MetricDisplay label="Ki Charges" value={stats.chargeCount} color="blue" darkMode={darkMode} size="small" />
+                                <MetricDisplay label="Ki Blasts" value={stats.shotEnergyBulletCount} color="blue" darkMode={darkMode} size="small" />
+                                <MetricDisplay label="Sparking Mode" value={stats.sparkingCount} color="yellow" darkMode={darkMode} size="small" />
+                                <MetricDisplay label="Dragon Dash Mileage" value={stats.dragonDashMileage} color="gray" darkMode={darkMode} size="small" />
+                              </div>
+                            </div>
+                          )}
                         </StatGroup>
 
                         {/* Combat Mechanics Section (Collapsible) */}
@@ -4978,22 +5825,16 @@ export default function App() {
                           <BuildDisplay stats={stats} showDetailed={true} darkMode={darkMode} />
                         </StatGroup>
                         
-                        {/* Forms Used Display */}
-                        {stats.formChangeHistory && (
-                          <div className={`mt-3 p-3 rounded-lg ${
-                            darkMode 
-                              ? 'bg-yellow-900/20 border border-yellow-700' 
-                              : 'bg-yellow-50 border border-yellow-200'
-                          }`}>
-                            <div className="flex items-center gap-2 mb-1">
-                              <Star className={`w-4 h-4 ${darkMode ? 'text-yellow-400' : 'text-yellow-600'}`} />
-                              <span className={`text-sm font-semibold ${darkMode ? 'text-yellow-300' : 'text-yellow-800'}`}>Forms Used</span>
-                            </div>
-                            <div className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
-                              {stats.formChangeHistory}
-                            </div>
-                          </div>
-                        )}
+                        {/* Forms Used Display - Expandable Per-Form Stats */}
+                        <PerFormStatsDisplay
+                          characterRecord={char}
+                          characterIdRecord={characterIdRecord}
+                          formChangeHistory={char.formChangeHistory}
+                          formChangeHistoryText={stats.formChangeHistory}
+                          originalCharacterId={play.originalCharacter?.key}
+                          charMap={charMap}
+                          darkMode={darkMode}
+                        />
                       </div>
                     );
                   });
@@ -5159,8 +6000,7 @@ export default function App() {
 
         {/* Team Rankings Display */}
         {((mode === 'reference' && viewType === 'teams') || 
-          (mode === 'manual' && viewType === 'teams' && manualFiles.filter(f => !f.error).length > 0)) && 
-          teamAggregatedData.length > 0 && (
+          (mode === 'manual' && viewType === 'teams' && manualFiles.filter(f => !f.error).length > 0)) && (
           <div className={`rounded-2xl shadow-xl p-6 mb-6 ${
             darkMode ? 'bg-gray-800 border border-gray-700' : 'bg-white'
           }`}>
@@ -5171,10 +6011,24 @@ export default function App() {
                 <p className={`${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
                   Teams ranked by win rate from {mode === 'reference' ? 1 : manualFiles.filter(f => !f.error).length} battle file{(mode === 'reference' ? 1 : manualFiles.filter(f => !f.error).length) !== 1 ? 's' : ''}
                 </p>
+                <p className={`text-sm ${darkMode ? 'text-amber-400' : 'text-amber-600'} mt-1`}>
+                  Team stats calculated from top 5 characters by combat performance score
+                </p>
               </div>
             </div>
             
-            <div className="space-y-4">
+            {teamAggregatedData.length === 0 ? (
+              <div className={`text-center py-12 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                <Users className="w-16 h-16 mx-auto mb-4 opacity-50" />
+                <h3 className="text-lg font-semibold mb-2">No Team Data Available</h3>
+                <p className="text-sm">
+                  The uploaded files don't contain team information in the expected format.
+                  <br />
+                  Make sure your battle result files include team names in the 'teams' array.
+                </p>
+              </div>
+            ) : (
+              <div className="space-y-4">
               {teamAggregatedData.map((team, i) => {
                 const expanded = expandedRows[`team_${i}`] || false;
                 
@@ -5232,7 +6086,7 @@ export default function App() {
                               {formatNumber(team.avgDamagePerMatch)}
                             </div>
                             <div className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
-                              Avg Damage
+                              Top 5 Damage
                             </div>
                           </div>
                           
@@ -5241,7 +6095,7 @@ export default function App() {
                               {team.avgHealthRetention.toFixed(1)}%
                             </div>
                             <div className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
-                              Health Retention
+                              Top 5 HP Retention
                             </div>
                           </div>
                           
@@ -5269,19 +6123,16 @@ export default function App() {
                         <div className="mt-6 grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
                           <div className={`p-3 rounded-lg border ${darkMode ? 'bg-gray-600 border-gray-600' : 'bg-white border-gray-200'}`}>
                             <div className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
-                              Damage Efficiency
+                              Top 5 Efficiency
                             </div>
                             <div className={`text-xl font-bold ${darkMode ? 'text-white' : 'text-gray-800'}`}>
-                              {team.totalDamageTaken > 0 ? 
-                                (team.totalDamageDealt / team.totalDamageTaken).toFixed(2) : 
-                                '∞'
-                              }
+                              {team.top5Efficiency ? team.top5Efficiency.toFixed(2) : '0.00'}
                             </div>
                           </div>
                           
                           <div className={`p-3 rounded-lg border ${darkMode ? 'bg-gray-600 border-gray-600' : 'bg-white border-gray-200'}`}>
                             <div className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
-                              Avg Damage Taken
+                              Top 5 Total Damage Taken
                             </div>
                             <div className={`text-xl font-bold ${darkMode ? 'text-white' : 'text-gray-800'}`}>
                               {formatNumber(team.avgDamageTakenPerMatch)}
@@ -5290,7 +6141,7 @@ export default function App() {
                           
                           <div className={`p-3 rounded-lg border ${darkMode ? 'bg-gray-600 border-gray-600' : 'bg-white border-gray-200'}`}>
                             <div className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
-                              Avg Damage Dealt
+                              Top 5 Total Damage Dealt
                             </div>
                             <div className={`text-xl font-bold ${darkMode ? 'text-white' : 'text-gray-800'}`}>
                               {formatNumber(team.avgDamagePerMatch)}
@@ -5335,15 +6186,18 @@ export default function App() {
                                   return Object.entries(team.characterAverages)
                                     .sort((a, b) => b[1].performanceScore - a[1].performanceScore)
                                     .slice(0, 8)
-                                    .map(([charName, charStats]) => {
+                                    .map(([charName, charStats], charIndex) => {
                                       const avgDamageTaken = charStats.avgDamageTaken || 1;
                                       const dps = charStats.avgDamagePerSecond || 0;
                                       const charKey = `team_${i}_char_${charName}`;
                                       const isCharExpanded = expandedRows[charKey];
+                                      const isTop5 = team.top5CharacterNames && team.top5CharacterNames.includes(charName);
                                     
                                     return (
                                       <div key={charName} className={`rounded-lg border-2 ${
-                                        darkMode ? 'bg-gray-700 border-gray-500' : 'bg-white border-gray-300'
+                                        isTop5 
+                                          ? (darkMode ? 'bg-gray-700 border-yellow-600' : 'bg-white border-yellow-500')
+                                          : (darkMode ? 'bg-gray-700 border-gray-500' : 'bg-white border-gray-300')
                                       } transition-all`}>
                                         {/* Header: Name, Primary Stats, Score */}
                                         <div 
@@ -5351,9 +6205,11 @@ export default function App() {
                                           onClick={() => setExpandedRows(prev => ({ ...prev, [charKey]: !prev[charKey] }))}
                                         >
                                           <div className="flex items-center justify-between gap-4">
-                                            {/* Character Name */}
-                                            <div className={`font-medium ${darkMode ? 'text-white' : 'text-gray-800'} min-w-[120px]`}>
-                                              {charName}
+                                            {/* Character Name with Top 5 Badge */}
+                                            <div className="flex items-center gap-2 min-w-[120px]">
+                                              <div className={`font-medium ${darkMode ? 'text-white' : 'text-gray-800'}`}>
+                                                {charName}
+                                              </div>
                                             </div>
                                             
                                             {/* Spacer to push stats to the right */}
@@ -5424,7 +6280,7 @@ export default function App() {
                                           <div className={`px-3 pb-3 ${darkMode ? 'border-gray-600' : 'border-gray-200'} pt-3`}>
                                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                                               {/* Combat Performance Section */}
-                                              <div className={`rounded-lg p-3 border-2 ${darkMode ? 'bg-gray-700 border-red-600' : 'bg-gray-50 border-red-400'}`}>
+                                              <div className={`rounded-lg p-3 border-2 ${darkMode ? 'bg-gray-700 border-red-700' : 'bg-gray-50 border-red-500'}`}>
                                                 <div className="flex items-center gap-2 mb-3">
                                                   <Swords className={`w-5 h-5 ${darkMode ? 'text-red-400' : 'text-red-600'}`} />
                                                   <h4 className={`text-sm font-bold ${darkMode ? 'text-white' : 'text-gray-800'}`}>Combat Performance</h4>
@@ -5492,7 +6348,7 @@ export default function App() {
                                               </div>
                                               
                                               {/* Survival & Health Section */}
-                                              <div className={`rounded-lg p-3 border-2 ${darkMode ? 'bg-gray-700 border-green-600' : 'bg-gray-50 border-green-400'}`}>
+                                              <div className={`rounded-lg p-3 border-2 ${darkMode ? 'bg-gray-700 border-green-700' : 'bg-gray-50 border-green-500'}`}>
                                                 <div className="flex items-center gap-2 mb-3">
                                                   <Heart className={`w-5 h-5 ${darkMode ? 'text-green-400' : 'text-green-600'}`} />
                                                   <h4 className={`text-sm font-bold ${darkMode ? 'text-white' : 'text-gray-800'}`}>Survival & Health</h4>
@@ -5515,6 +6371,10 @@ export default function App() {
                                                     <strong className={`${darkMode ? 'text-white' : 'text-gray-900'}`}>
                                                       {(charStats.avgHealthRetention * 100).toFixed(1)}%
                                                     </strong>
+                                                  </div>
+                                                  <div className="flex justify-between">
+                                                    <span className={`${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>Swaps (Tags):</span>
+                                                    <strong className={`${darkMode ? 'text-teal-400' : 'text-teal-600'}`}>{charStats.avgTags || 0}</strong>
                                                   </div>
                                                 </div>
                                                 <div className={`grid grid-cols-2 gap-x-4 gap-y-1.5 text-xs pt-2 border-t ${darkMode ? 'border-gray-500' : 'border-gray-200'}`}>
@@ -5539,23 +6399,91 @@ export default function App() {
                                             </div>
                                             
                                             {/* Special Abilities Section */}
-                                            <div className={`rounded-lg p-3 mt-3 border-2 ${darkMode ? 'bg-gray-700 border-purple-600' : 'bg-gray-50 border-purple-400'}`}>
+                                            <div className={`rounded-lg p-3 mt-3 border-2 ${darkMode ? 'bg-gray-700 border-purple-700' : 'bg-gray-50 border-purple-500'}`}>
                                               <div className="flex items-center gap-2 mb-3">
                                                 <Zap className={`w-5 h-5 ${darkMode ? 'text-purple-400' : 'text-purple-600'}`} />
                                                 <h4 className={`text-sm font-bold ${darkMode ? 'text-white' : 'text-gray-800'}`}>Special Abilities</h4>
                                               </div>
+                                              {/* DEBUG: Log UI values for Panzy */}
+                                              {charName.toLowerCase().includes('panzy') && (() => {
+                                                console.log('=== TEAM RANKINGS UI - Panzy Display Values ===');
+                                                console.log('charStats object:', charStats);
+                                                console.log('avgS1Hit:', charStats.avgS1Hit);
+                                                console.log('avgS1Blast:', charStats.avgS1Blast);
+                                                console.log('avgSPM1:', charStats.avgSPM1);
+                                                console.log('s1HitRateOverall:', charStats.s1HitRateOverall);
+                                                return null;
+                                              })()}
+                                              {/* Display each blast type individually - show hit/thrown format if that specific type has hit rate data, otherwise show legacy format */}
                                               <div className="space-y-2 text-sm mb-2">
                                                 <div className="flex justify-between">
                                                   <span className={`${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>Super 1 Blasts:</span>
-                                                  <strong className={`${darkMode ? 'text-white' : 'text-gray-900'}`}>{charStats.avgSPM1 || 0}</strong>
+                                                  <div className="flex items-center gap-2">
+                                                    {charStats.s1HitRateOverall !== null && charStats.s1HitRateOverall !== undefined ? (
+                                                      <>
+                                                        <strong className={`${darkMode ? 'text-yellow-400' : 'text-yellow-600'}`}>
+                                                          {(charStats.avgS1Hit || 0).toFixed(1)}/{(charStats.avgS1Blast || charStats.avgSPM1 || 0).toFixed(1)}
+                                                        </strong>
+                                                        <span className={`text-xs font-mono ${
+                                                          charStats.s1HitRateOverall >= 70 ? (darkMode ? 'text-green-400' : 'text-green-600') :
+                                                          charStats.s1HitRateOverall >= 50 ? (darkMode ? 'text-yellow-400' : 'text-yellow-600') :
+                                                          (darkMode ? 'text-red-400' : 'text-red-600')
+                                                        }`}>
+                                                          ({charStats.s1HitRateOverall.toFixed(1)}%)
+                                                        </span>
+                                                      </>
+                                                    ) : (
+                                                      <strong className={`${darkMode ? 'text-yellow-400' : 'text-yellow-600'}`}>
+                                                        {(charStats.avgSPM1 || 0).toFixed(1)}
+                                                      </strong>
+                                                    )}
+                                                  </div>
                                                 </div>
                                                 <div className="flex justify-between">
                                                   <span className={`${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>Super 2 Blasts:</span>
-                                                  <strong className={`${darkMode ? 'text-white' : 'text-gray-900'}`}>{charStats.avgSPM2 || 0}</strong>
+                                                  <div className="flex items-center gap-2">
+                                                    {charStats.s2HitRateOverall !== null && charStats.s2HitRateOverall !== undefined ? (
+                                                      <>
+                                                        <strong className={`${darkMode ? 'text-yellow-400' : 'text-yellow-600'}`}>
+                                                          {(charStats.avgS2Hit || 0).toFixed(1)}/{(charStats.avgS2Blast || charStats.avgSPM2 || 0).toFixed(1)}
+                                                        </strong>
+                                                        <span className={`text-xs font-mono ${
+                                                          charStats.s2HitRateOverall >= 70 ? (darkMode ? 'text-green-400' : 'text-green-600') :
+                                                          charStats.s2HitRateOverall >= 50 ? (darkMode ? 'text-yellow-400' : 'text-yellow-600') :
+                                                          (darkMode ? 'text-red-400' : 'text-red-600')
+                                                        }`}>
+                                                          ({charStats.s2HitRateOverall.toFixed(1)}%)
+                                                        </span>
+                                                      </>
+                                                    ) : (
+                                                      <strong className={`${darkMode ? 'text-yellow-400' : 'text-yellow-600'}`}>
+                                                        {(charStats.avgSPM2 || 0).toFixed(1)}
+                                                      </strong>
+                                                    )}
+                                                  </div>
                                                 </div>
                                                 <div className="flex justify-between">
                                                   <span className={`${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>Ultimate Blasts:</span>
-                                                  <strong className={`${darkMode ? 'text-white' : 'text-gray-900'}`}>{charStats.avgUltimates || 0}</strong>
+                                                  <div className="flex items-center gap-2">
+                                                    {charStats.ultHitRateOverall !== null && charStats.ultHitRateOverall !== undefined ? (
+                                                      <>
+                                                        <strong className={`${darkMode ? 'text-cyan-400' : 'text-cyan-600'}`}>
+                                                          {(charStats.avgUltHit || 0).toFixed(1)}/{(charStats.avgUltBlast || charStats.avgUltimates || 0).toFixed(1)}
+                                                        </strong>
+                                                        <span className={`text-xs font-mono ${
+                                                          charStats.ultHitRateOverall >= 70 ? (darkMode ? 'text-green-400' : 'text-green-600') :
+                                                          charStats.ultHitRateOverall >= 50 ? (darkMode ? 'text-yellow-400' : 'text-yellow-600') :
+                                                          (darkMode ? 'text-red-400' : 'text-red-600')
+                                                        }`}>
+                                                          ({charStats.ultHitRateOverall.toFixed(1)}%)
+                                                        </span>
+                                                      </>
+                                                    ) : (
+                                                      <strong className={`${darkMode ? 'text-cyan-400' : 'text-cyan-600'}`}>
+                                                        {(charStats.avgUltimates || 0).toFixed(1)}
+                                                      </strong>
+                                                    )}
+                                                  </div>
                                                 </div>
                                               </div>
                                               <div className={`grid grid-cols-2 gap-x-4 gap-y-1.5 text-xs pt-2 border-t ${darkMode ? 'border-gray-500' : 'border-gray-200'}`}>
@@ -5585,6 +6513,17 @@ export default function App() {
                                                 </div>
                                               </div>
                                             </div>
+                                            
+                                            {/* Per-Form Stats - Aggregated */}
+                                            {charStats.formStats && charStats.formStats.length > 0 && (
+                                              <div className="col-span-1 sm:col-span-2">
+                                                <PerFormStatsDisplayAggregated
+                                                  formStatsArray={charStats.formStats}
+                                                  formChangeHistoryText={charStats.formChangeHistoryText}
+                                                  darkMode={darkMode}
+                                                />
+                                              </div>
+                                            )}
                                           </div>
                                         )}
                                       </div>
@@ -5698,7 +6637,8 @@ export default function App() {
                   </div>
                 );
               })}
-            </div>
+              </div>
+            )}
           </div>
         )}
 

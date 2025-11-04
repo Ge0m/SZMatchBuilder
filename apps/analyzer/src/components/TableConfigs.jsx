@@ -38,8 +38,8 @@ export const getCharacterAveragesTableConfig = (darkMode = false) => ({
   columnGroups: [
     { name: 'Identity & Context', columns: ['name', 'primaryTeam', 'matchCount', 'wins', 'losses'] },
     { name: 'Combat Performance', columns: ['avgDamage', 'avgTaken', 'efficiency', 'dps', 'combatScore', 'avgBattleTime', 'totalKills', 'avgKills'] },
-    { name: 'Survival & Health', columns: ['avgHPGaugeValueMax', 'avgHealth', 'healthRetention', 'survivalRate', 'avgGuards', 'avgRevengeCounters', 'avgSuperCounters', 'avgZCounters'] },
-    { name: 'Special Abilities', columns: ['avgSPM1', 'avgSPM2', 'avgSkill1', 'avgSkill2', 'avgUltimates', 'avgEnergyBlasts', 'avgCharges', 'avgSparking', 'avgDragonDashMileage'] },
+    { name: 'Survival & Health', columns: ['avgHPGaugeValueMax', 'avgHealth', 'healthRetention', 'survivalRate', 'avgGuards', 'avgRevengeCounters', 'avgSuperCounters', 'avgZCounters', 'avgTags'] },
+    { name: 'Special Abilities', columns: ['avgS1Blast', 'avgS1Hit', 's1HitRate', 'avgS2Blast', 'avgS2Hit', 's2HitRate', 'avgUltBlast', 'avgUltHit', 'ultHitRate', 'avgSkill1', 'avgSkill2', 'avgUltimates', 'avgEnergyBlasts', 'avgCharges', 'avgSparking', 'avgDragonDashMileage'] },
     { name: 'Combat Mechanics', columns: ['avgMaxCombo', 'avgMaxComboDamage', 'avgThrows', 'avgLightningAttacks', 'avgVanishingAttacks', 'avgDragonHoming', 'avgSpeedImpacts', 'speedImpactWinRate', 'avgSparkingCombo'] },
     { name: 'Build & Equipment', columns: ['buildArchetype', 'damageCapsules', 'defensiveCapsules', 'utilityCapsules', 'topCapsules', 'primaryAIStrategy'] },
     { name: 'Form Changes', columns: ['hasMultipleForms', 'formCount', 'formHistory'] }
@@ -371,14 +371,28 @@ export const getCharacterAveragesTableConfig = (darkMode = false) => ({
         <span className="font-mono text-cyan-600">{value.toFixed(1)}</span>
       )
     },
+    {
+      key: 'avgTags',
+      header: 'Avg Tags',
+      accessor: (row) => row.avgTags,
+      sortType: 'number',
+      sortable: true,
+      filterable: false,
+      group: 'Survival & Health',
+      exportFormat: { alignment: 'right', numFmt: '0.0', heatmap: true },
+      render: (row, value) => (
+        <span className="font-mono text-teal-600">{value.toFixed(1)}</span>
+      )
+    },
 
     // ========================================================================
-    // D. SPECIAL ABILITIES (9 columns)
+    // D. SPECIAL ABILITIES (15 columns)
     // ========================================================================
+    // Super 1 Blast Tracking (3 columns: Thrown, Hit, Rate)
     {
-      key: 'avgSPM1',
-      header: 'Avg Super 1',
-      accessor: (row) => row.avgSPM1,
+      key: 'avgS1Blast',
+      header: 'S1 Thrown',
+      accessor: (row) => row.avgS1Blast,
       sortType: 'number',
       sortable: true,
       filterable: false,
@@ -389,9 +403,46 @@ export const getCharacterAveragesTableConfig = (darkMode = false) => ({
       )
     },
     {
-      key: 'avgSPM2',
-      header: 'Avg Super 2',
-      accessor: (row) => row.avgSPM2,
+      key: 'avgS1Hit',
+      header: 'S1 Hit',
+      accessor: (row) => row.avgS1Hit,
+      sortType: 'number',
+      sortable: true,
+      filterable: false,
+      group: 'Special Abilities',
+      exportFormat: { alignment: 'right', numFmt: '0.0', heatmap: true },
+      render: (row, value) => (
+        <span className="font-mono text-orange-700">{value.toFixed(1)}</span>
+      )
+    },
+    {
+      key: 's1HitRate',
+      header: 'S1 Hit Rate',
+      accessor: (row) => row.s1HitRateOverall,
+      sortType: 'number',
+      sortable: true,
+      filterable: false,
+      group: 'Special Abilities',
+      exportFormat: { alignment: 'right', numFmt: '0.0"%"', colorScale: 'redYellowGreen' },
+      render: (row, value) => {
+        if (value === null || value === undefined) {
+          return <span className="font-mono text-gray-400">N/A</span>;
+        }
+        return (
+          <span className={`font-mono font-bold ${
+            value >= 70 ? 'text-green-600' : 
+            value >= 50 ? 'text-yellow-600' : 'text-red-600'
+          }`}>
+            {value.toFixed(1)}%
+          </span>
+        );
+      }
+    },
+    // Super 2 Blast Tracking (3 columns: Thrown, Hit, Rate)
+    {
+      key: 'avgS2Blast',
+      header: 'S2 Thrown',
+      accessor: (row) => row.avgS2Blast,
       sortType: 'number',
       sortable: true,
       filterable: false,
@@ -400,6 +451,92 @@ export const getCharacterAveragesTableConfig = (darkMode = false) => ({
       render: (row, value) => (
         <span className="font-mono text-red-600">{value.toFixed(1)}</span>
       )
+    },
+    {
+      key: 'avgS2Hit',
+      header: 'S2 Hit',
+      accessor: (row) => row.avgS2Hit,
+      sortType: 'number',
+      sortable: true,
+      filterable: false,
+      group: 'Special Abilities',
+      exportFormat: { alignment: 'right', numFmt: '0.0', heatmap: true },
+      render: (row, value) => (
+        <span className="font-mono text-red-700">{value.toFixed(1)}</span>
+      )
+    },
+    {
+      key: 's2HitRate',
+      header: 'S2 Hit Rate',
+      accessor: (row) => row.s2HitRateOverall,
+      sortType: 'number',
+      sortable: true,
+      filterable: false,
+      group: 'Special Abilities',
+      exportFormat: { alignment: 'right', numFmt: '0.0"%"', colorScale: 'redYellowGreen' },
+      render: (row, value) => {
+        if (value === null || value === undefined) {
+          return <span className="font-mono text-gray-400">N/A</span>;
+        }
+        return (
+          <span className={`font-mono font-bold ${
+            value >= 70 ? 'text-green-600' : 
+            value >= 50 ? 'text-yellow-600' : 'text-red-600'
+          }`}>
+            {value.toFixed(1)}%
+          </span>
+        );
+      }
+    },
+    // Ultimate Blast Tracking (3 columns: Thrown, Hit, Rate)
+    {
+      key: 'avgUltBlast',
+      header: 'Ult Thrown',
+      accessor: (row) => row.avgUltBlast,
+      sortType: 'number',
+      sortable: true,
+      filterable: false,
+      group: 'Special Abilities',
+      exportFormat: { alignment: 'right', numFmt: '0.0', heatmap: true, highlight: 'gold' },
+      render: (row, value) => (
+        <span className="font-mono text-yellow-600">{value.toFixed(1)}</span>
+      )
+    },
+    {
+      key: 'avgUltHit',
+      header: 'Ult Hit',
+      accessor: (row) => row.avgUltHit,
+      sortType: 'number',
+      sortable: true,
+      filterable: false,
+      group: 'Special Abilities',
+      exportFormat: { alignment: 'right', numFmt: '0.0', heatmap: true, highlight: 'gold' },
+      render: (row, value) => (
+        <span className="font-mono font-bold text-yellow-700">{value.toFixed(1)}</span>
+      )
+    },
+    {
+      key: 'ultHitRate',
+      header: 'Ult Hit Rate',
+      accessor: (row) => row.ultHitRateOverall,
+      sortType: 'number',
+      sortable: true,
+      filterable: false,
+      group: 'Special Abilities',
+      exportFormat: { alignment: 'right', numFmt: '0.0"%"', colorScale: 'redYellowGreen', highlight: 'gold' },
+      render: (row, value) => {
+        if (value === null || value === undefined) {
+          return <span className="font-mono text-gray-400">N/A</span>;
+        }
+        return (
+          <span className={`font-mono font-bold ${
+            value >= 70 ? 'text-green-600' : 
+            value >= 50 ? 'text-yellow-600' : 'text-red-600'
+          }`}>
+            {value.toFixed(1)}%
+          </span>
+        );
+      }
     },
     {
       key: 'avgSkill1',
@@ -832,8 +969,19 @@ export const prepareCharacterAveragesData = (aggregatedData) => {
     avgRevengeCounters: char.avgRevengeCounters || 0,
     avgSuperCounters: char.avgSuperCounters || 0,
     avgZCounters: char.avgZCounters || 0,
+    avgTags: char.avgTags || 0,
     
-    // Special Abilities
+    // Special Abilities - NEW blast tracking
+    avgS1Blast: char.avgS1Blast || 0,
+    avgS1Hit: char.avgS1Hit || 0,
+    s1HitRateOverall: char.s1HitRateOverall ?? null,
+    avgS2Blast: char.avgS2Blast || 0,
+    avgS2Hit: char.avgS2Hit || 0,
+    s2HitRateOverall: char.s2HitRateOverall ?? null,
+    avgUltBlast: char.avgUltBlast || 0,
+    avgUltHit: char.avgUltHit || 0,
+    ultHitRateOverall: char.ultHitRateOverall ?? null,
+    // Legacy fields for backwards compatibility
     avgSPM1: char.avgSPM1 || 0,
     avgSPM2: char.avgSPM2 || 0,
     avgEXA1: char.avgEXA1 || 0,
@@ -892,8 +1040,8 @@ export const getMatchDetailsTableConfig = (darkMode = false) => ({
   columnGroups: [
     { name: 'Match Identity', columns: ['name', 'matchNumber', 'team', 'opponentTeam', 'matchResult', 'fileName'] },
     { name: 'Combat Performance', columns: ['damageDone', 'damageTaken', 'efficiency', 'dps', 'battleDuration', 'kills'] },
-    { name: 'Survival & Health', columns: ['hpRemaining', 'hpMax', 'hpRetention', 'guards', 'revengeCounters', 'superCounters', 'zCounters'] },
-    { name: 'Special Abilities', columns: ['spm1', 'spm2', 'skill1', 'skill2', 'ultimates', 'kiBlasts', 'charges', 'sparkings', 'dragonDashMileage'] },
+    { name: 'Survival & Health', columns: ['hpRemaining', 'hpMax', 'hpRetention', 'guards', 'revengeCounters', 'superCounters', 'zCounters', 'tags'] },
+    { name: 'Special Abilities', columns: ['s1Blast', 's1HitBlast', 's1HitRate', 's2Blast', 's2HitBlast', 's2HitRate', 'ultBlast', 'uLTHitBlast', 'ultHitRate', 'skill1', 'skill2', 'ultimates', 'kiBlasts', 'charges', 'sparkings', 'dragonDashMileage'] },
     { name: 'Combat Mechanics', columns: ['maxComboHits', 'maxComboDamage', 'throws', 'lightningAttacks', 'vanishingAttacks', 'dragonHoming', 'speedImpacts', 'speedImpactWins', 'speedImpactWinRate', 'sparkingComboHits'] },
     { name: 'Build & Equipment', columns: ['buildArchetype', 'capsule1', 'capsule2', 'capsule3', 'capsule4', 'capsule5', 'capsule6', 'capsule7', 'totalCapsuleCost', 'damageCaps', 'defensiveCaps', 'utilityCaps', 'aiStrategy'] },
     { name: 'Form Changes', columns: ['startedAs', 'formsUsed', 'formChangeCount'] }
@@ -1201,14 +1349,28 @@ export const getMatchDetailsTableConfig = (darkMode = false) => ({
         <span className="font-mono text-cyan-600">{value}</span>
       )
     },
+    {
+      key: 'tags',
+      header: 'Tags',
+      accessor: (row) => row.tags,
+      sortType: 'number',
+      sortable: true,
+      filterable: false,
+      group: 'Survival & Health',
+      exportFormat: { alignment: 'right', numFmt: '0' },
+      render: (row, value) => (
+        <span className="font-mono text-teal-600">{value}</span>
+      )
+    },
 
     // ========================================================================
-    // D. SPECIAL ABILITIES (9 columns)
+    // D. SPECIAL ABILITIES (15 columns)
     // ========================================================================
+    // Super 1 Blast Tracking (3 columns: Thrown, Hit, Rate)
     {
-      key: 'spm1',
-      header: 'Super 1',
-      accessor: (row) => row.spm1Count,
+      key: 's1Blast',
+      header: 'S1 Thrown',
+      accessor: (row) => row.s1Blast,
       sortType: 'number',
       sortable: true,
       filterable: false,
@@ -1219,9 +1381,41 @@ export const getMatchDetailsTableConfig = (darkMode = false) => ({
       )
     },
     {
-      key: 'spm2',
-      header: 'Super 2',
-      accessor: (row) => row.spm2Count,
+      key: 's1HitBlast',
+      header: 'S1 Hit',
+      accessor: (row) => row.s1HitBlast,
+      sortType: 'number',
+      sortable: true,
+      filterable: false,
+      group: 'Special Abilities',
+      exportFormat: { alignment: 'right', numFmt: '0' },
+      render: (row, value) => (
+        <span className="font-mono text-orange-700">{value}</span>
+      )
+    },
+    {
+      key: 's1HitRate',
+      header: 'S1 Rate',
+      accessor: (row) => row.s1HitRate,
+      sortType: 'number',
+      sortable: true,
+      filterable: false,
+      group: 'Special Abilities',
+      exportFormat: { alignment: 'right', numFmt: '0.0"%"', colorScale: 'redYellowGreen' },
+      render: (row, value) => (
+        <span className={`font-mono ${
+          value >= 70 ? 'text-green-600' : 
+          value >= 50 ? 'text-yellow-600' : 'text-red-600'
+        }`}>
+          {value.toFixed(1)}%
+        </span>
+      )
+    },
+    // Super 2 Blast Tracking (3 columns: Thrown, Hit, Rate)
+    {
+      key: 's2Blast',
+      header: 'S2 Thrown',
+      accessor: (row) => row.s2Blast,
       sortType: 'number',
       sortable: true,
       filterable: false,
@@ -1229,6 +1423,109 @@ export const getMatchDetailsTableConfig = (darkMode = false) => ({
       exportFormat: { alignment: 'right', numFmt: '0' },
       render: (row, value) => (
         <span className="font-mono text-red-600">{value}</span>
+      )
+    },
+    {
+      key: 's2HitBlast',
+      header: 'S2 Hit',
+      accessor: (row) => row.s2HitBlast,
+      sortType: 'number',
+      sortable: true,
+      filterable: false,
+      group: 'Special Abilities',
+      exportFormat: { alignment: 'right', numFmt: '0' },
+      render: (row, value) => (
+        <span className="font-mono text-red-700">{value}</span>
+      )
+    },
+    {
+      key: 's2HitRate',
+      header: 'S2 Rate',
+      accessor: (row) => row.s2HitRate,
+      sortType: 'number',
+      sortable: true,
+      filterable: false,
+      group: 'Special Abilities',
+      exportFormat: { alignment: 'right', numFmt: '0.0"%"', colorScale: 'redYellowGreen' },
+      render: (row, value) => (
+        <span className={`font-mono ${
+          value >= 70 ? 'text-green-600' : 
+          value >= 50 ? 'text-yellow-600' : 'text-red-600'
+        }`}>
+          {value.toFixed(1)}%
+        </span>
+      )
+    },
+    // Ultimate Blast Tracking (3 columns: Thrown, Hit, Rate)
+    {
+      key: 'ultBlast',
+      header: 'Ult Thrown',
+      accessor: (row) => row.ultBlast,
+      sortType: 'number',
+      sortable: true,
+      filterable: false,
+      group: 'Special Abilities',
+      exportFormat: { alignment: 'right', numFmt: '0', highlight: 'gold' },
+      render: (row, value) => (
+        <span className="font-mono text-yellow-600">{value}</span>
+      )
+    },
+    {
+      key: 'uLTHitBlast',
+      header: 'Ult Hit',
+      accessor: (row) => row.uLTHitBlast,
+      sortType: 'number',
+      sortable: true,
+      filterable: false,
+      group: 'Special Abilities',
+      exportFormat: { alignment: 'right', numFmt: '0', highlight: 'gold' },
+      render: (row, value) => (
+        <span className="font-mono font-bold text-yellow-700">{value}</span>
+      )
+    },
+    {
+      key: 'ultHitRate',
+      header: 'Ult Rate',
+      accessor: (row) => row.ultHitRate,
+      sortType: 'number',
+      sortable: true,
+      filterable: false,
+      group: 'Special Abilities',
+      exportFormat: { alignment: 'right', numFmt: '0.0"%"', colorScale: 'redYellowGreen', highlight: 'gold' },
+      render: (row, value) => (
+        <span className={`font-mono font-bold ${
+          value >= 70 ? 'text-green-600' : 
+          value >= 50 ? 'text-yellow-600' : 'text-red-600'
+        }`}>
+          {value.toFixed(1)}%
+        </span>
+      )
+    },
+    // Legacy columns kept for backwards compatibility
+    {
+      key: 'spm1',
+      header: 'Super 1 (Legacy)',
+      accessor: (row) => row.spm1Count,
+      sortType: 'number',
+      sortable: true,
+      filterable: false,
+      group: 'Special Abilities',
+      exportFormat: { alignment: 'right', numFmt: '0' },
+      render: (row, value) => (
+        <span className="font-mono text-orange-400 opacity-50">{value}</span>
+      )
+    },
+    {
+      key: 'spm2',
+      header: 'Super 2 (Legacy)',
+      accessor: (row) => row.spm2Count,
+      sortType: 'number',
+      sortable: true,
+      filterable: false,
+      group: 'Special Abilities',
+      exportFormat: { alignment: 'right', numFmt: '0' },
+      render: (row, value) => (
+        <span className="font-mono text-red-400 opacity-50">{value}</span>
       )
     },
     {
@@ -1673,8 +1970,19 @@ export const prepareMatchDetailsData = (aggregatedData) => {
         revengeCounterCount: match.revengeCounterCount || 0,
         superCounterCount: match.superCounterCount || 0,
         zCounterCount: match.zCounterCount || 0,
+        tags: match.tags || 0,
         
-        // Special Abilities
+        // Special Abilities - NEW blast tracking
+        s1Blast: match.s1Blast || 0,
+        s2Blast: match.s2Blast || 0,
+        ultBlast: match.ultBlast || 0,
+        s1HitBlast: match.s1HitBlast || 0,
+        s2HitBlast: match.s2HitBlast || 0,
+        uLTHitBlast: match.uLTHitBlast || 0,
+        s1HitRate: match.s1HitRate || 0,
+        s2HitRate: match.s2HitRate || 0,
+        ultHitRate: match.ultHitRate || 0,
+        // Legacy fields for backwards compatibility
         spm1Count: match.spm1Count || 0,
         spm2Count: match.spm2Count || 0,
         exa1Count: match.exa1Count || 0,

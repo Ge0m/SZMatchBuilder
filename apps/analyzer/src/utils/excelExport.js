@@ -557,11 +557,12 @@ function applyColumnFormatting(cell, column, rowValues, rowNumber, timeColumnAve
   }
 
   // Decimal columns (1 decimal place)
-  if (['avgSPM1', 'avgSPM2', 'avgSkill1', 'avgSkill2', 'avgUltimates', 'avgEnergyBlasts',
+  if (['avgS1Blast', 'avgS2Blast', 'avgUltBlast', 'avgS1Hit', 'avgS2Hit', 'avgUltHit',
+       'avgSPM1', 'avgSPM2', 'avgSkill1', 'avgSkill2', 'avgUltimates', 'avgEnergyBlasts',
        'avgCharges', 'avgSparking', 'avgDragonDashMileage', 'avgMaxCombo', 'avgThrows',
        'avgLightningAttacks', 'avgVanishingAttacks', 'avgDragonHoming', 'avgSpeedImpacts',
        'avgSparkingCombo', 'avgKills', 'avgGuards', 'avgRevengeCounters', 'avgSuperCounters',
-       'avgZCounters', 'damageCapsules', 'defensiveCapsules', 'utilityCapsules'].includes(key)) {
+       'avgZCounters', 'avgTags', 'damageCapsules', 'defensiveCapsules', 'utilityCapsules'].includes(key)) {
     cell.numFmt = '0.0';
     cell.alignment = { horizontal: 'right' };
   }
@@ -731,6 +732,18 @@ function calculateColumnWidth(header, key) {
     'revengeCounters': 12,  // Reduced from 14
     'superCounters': 12,  // Reduced from 14
     'zCounters': 9,  // Reduced from 10
+    'tags': 7,  // NEW: Character swaps
+    // NEW blast tracking columns
+    's1Blast': 9,
+    's2Blast': 9,
+    'ultBlast': 9,
+    's1HitBlast': 8,
+    's2HitBlast': 8,
+    'uLTHitBlast': 8,
+    's1HitRate': 10,
+    's2HitRate': 10,
+    'ultHitRate': 10,
+    // Legacy blast columns
     'spm1': 7,  // Reduced from 8
     'spm2': 7,  // Reduced from 8
     'skill1': 7,  // Reduced from 8
@@ -744,6 +757,16 @@ function calculateColumnWidth(header, key) {
     'formCount': 10,  // Reduced from 12
     
     // Multi-word columns with small numbers - optimized
+    'avgS1Blast': 11,
+    'avgS2Blast': 11,
+    'avgUltBlast': 11,
+    'avgS1Hit': 10,
+    'avgS2Hit': 10,
+    'avgUltHit': 10,
+    's1HitRateOverall': 12,
+    's2HitRateOverall': 12,
+    'ultHitRateOverall': 12,
+    'avgTags': 9,
     'avgSparking': 10,  // Reduced from 12
     'avgSparkingCombo': 13,  // Reduced from 16
     'sparkingComboHits': 13,  // Reduced from 16
@@ -1000,6 +1023,18 @@ async function generateTeamPerformanceMatrix(workbook, data, includeFormatting) 
     'avgRevengeCounters': 'Revenge Counters',
     'avgSuperCounters': 'Super Counters',
     'avgZCounters': 'Z-Counters',
+    'avgTags': 'Tags',
+    // NEW blast tracking
+    'avgS1Blast': 'S1 Thrown',
+    'avgS1Hit': 'S1 Hit',
+    's1HitRateOverall': 'S1 Rate',
+    'avgS2Blast': 'S2 Thrown',
+    'avgS2Hit': 'S2 Hit',
+    's2HitRateOverall': 'S2 Rate',
+    'avgUltBlast': 'Ult Thrown',
+    'avgUltHit': 'Ult Hit',
+    'ultHitRateOverall': 'Ult Rate',
+    // Legacy
     'avgSPM1': 'Super 1',
     'avgSPM2': 'Super 2',
     'avgSkill1': 'Skill 1',
@@ -1100,6 +1135,18 @@ async function generateTeamPerformanceMatrix(workbook, data, includeFormatting) 
       'avgRevengeCounters': 'top5TotalRevengeCounters',
       'avgSuperCounters': 'top5TotalSuperCounters',
       'avgZCounters': 'top5TotalZCounters',
+      'avgTags': 'top5TotalTags',
+      // NEW blast tracking
+      'avgS1Blast': 'top5TotalS1Blast',
+      'avgS1Hit': 'top5TotalS1Hit',
+      's1HitRateOverall': 'top5S1HitRate',
+      'avgS2Blast': 'top5TotalS2Blast',
+      'avgS2Hit': 'top5TotalS2Hit',
+      's2HitRateOverall': 'top5S2HitRate',
+      'avgUltBlast': 'top5TotalUltBlast',
+      'avgUltHit': 'top5TotalUltHit',
+      'ultHitRateOverall': 'top5UltHitRate',
+      // Legacy
       'avgSPM1': 'top5TotalSuper1',
       'avgSPM2': 'top5TotalSuper2',
       'avgSkill1': 'top5TotalSkill1',
