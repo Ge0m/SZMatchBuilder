@@ -26,6 +26,7 @@ body {
 .rounded-2xl { border-radius: 1rem; }
 .rounded-xl { border-radius: 0.75rem; }
 .rounded-lg { border-radius: 0.5rem; }
+.rounded-t-lg { border-top-left-radius: 0.5rem; border-top-right-radius: 0.5rem; }
 .shadow-2xl { box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25); }
 .shadow-xl { box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04); }
 .mb-6 { margin-bottom: 1.5rem; }
@@ -265,6 +266,11 @@ body {
 .hover\:bg-yellow-100:hover { background-color: #fefce8; }
 .hover\:bg-yellow-900\/30:hover { background-color: rgba(113, 63, 18, 0.3); }
 
+/* Hover text colors */
+.hover\:text-gray-200:hover { color: #e5e7eb; }
+.hover\:text-gray-300:hover { color: #d1d5db; }
+.hover\:text-gray-800:hover { color: #1f2937; }
+
 /* Hover border colors */
 .hover\:border-gray-300:hover { border-color: #d1d5db; }
 .hover\:border-gray-400:hover { border-color: #9ca3af; }
@@ -328,6 +334,8 @@ body {
 .pt-3 { padding-top: 0.75rem; }
 .pb-3 { padding-bottom: 0.75rem; }
 .border-t { border-top-width: 1px; border-top-style: solid; }
+.border-b { border-bottom-width: 1px; border-bottom-style: solid; }
+.border-b-2 { border-bottom-width: 2px; border-bottom-style: solid; }
 .w-10 { width: 2.5rem; }
 .h-10 { height: 2.5rem; }
 .ml-auto { margin-left: auto; }

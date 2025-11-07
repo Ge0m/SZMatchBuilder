@@ -10,6 +10,7 @@ import { prepareCharacterAveragesData, prepareMatchDetailsData, getCharacterAver
 import { exportToExcel } from './utils/excelExport.js';
 import { PerFormStatsDisplay, PerFormStatsDisplayAggregated } from './components/PerFormStatsDisplay.jsx';
 import { calculatePerFormStats } from './utils/formStatsCalculator.js';
+import CapsuleSynergyAnalysis from './components/CapsuleSynergyAnalysis.jsx';
 import { 
   Trophy, 
   Swords, 
@@ -764,6 +765,24 @@ function MetaAnalysisContent({ aggregatedData, capsuleMap, aiStrategies, darkMod
 
   return (
     <div className="space-y-6">
+      {/* Phase 1.1: Capsule Performance Analysis */}
+      <div className={`p-6 rounded-lg ${darkMode ? 'bg-gray-700/50' : 'bg-blue-50'} border ${darkMode ? 'border-blue-900/30' : 'border-blue-200'}`}>
+        <div className="flex items-center gap-3 mb-4">
+          <Zap className={`w-6 h-6 ${darkMode ? 'text-blue-400' : 'text-blue-600'}`} />
+          <h3 className={`text-xl font-semibold ${darkMode ? 'text-white' : 'text-gray-800'}`}>
+            Capsule Performance Analysis
+          </h3>
+          <span className={`ml-auto px-3 py-1 rounded-full text-xs font-medium ${darkMode ? 'bg-green-900/50 text-green-300' : 'bg-green-100 text-green-700'}`}>
+            Phase 1
+          </span>
+        </div>
+        <p className={`mb-4 text-sm ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
+          Analyze individual capsule performance across matches, characters, and AI strategies.
+        </p>
+        <CapsuleSynergyAnalysis aggregatedData={aggregatedData} darkMode={darkMode} />
+      </div>
+
+      {/* Original Meta Analysis Content */}
       {/* Build Archetypes */}
       <div>
         <h3 className="text-lg font-semibold text-gray-800 mb-4 flex items-center gap-2">
