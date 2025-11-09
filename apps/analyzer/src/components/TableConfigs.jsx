@@ -1,5 +1,6 @@
 import React from 'react';
 import { formatNumber } from '../utils/formatters';
+import { getBuildTypeColor } from '../App'; // Import build type color function for new 7-category system
 import { 
   Trophy, 
   Target, 
@@ -41,7 +42,7 @@ export const getCharacterAveragesTableConfig = (darkMode = false) => ({
     { name: 'Survival & Health', columns: ['avgHPGaugeValueMax', 'avgHealth', 'healthRetention', 'survivalRate', 'avgGuards', 'avgRevengeCounters', 'avgSuperCounters', 'avgZCounters', 'avgTags'] },
     { name: 'Special Abilities', columns: ['avgS1Blast', 'avgS1Hit', 's1HitRate', 'avgS2Blast', 'avgS2Hit', 's2HitRate', 'avgUltBlast', 'avgUltHit', 'ultHitRate', 'avgSkill1', 'avgSkill2', 'avgUltimates', 'avgEnergyBlasts', 'avgCharges', 'avgSparking', 'avgDragonDashMileage'] },
     { name: 'Combat Mechanics', columns: ['avgMaxCombo', 'avgMaxComboDamage', 'avgThrows', 'avgLightningAttacks', 'avgVanishingAttacks', 'avgDragonHoming', 'avgSpeedImpacts', 'speedImpactWinRate', 'avgSparkingCombo'] },
-    { name: 'Build & Equipment', columns: ['buildArchetype', 'damageCapsules', 'defensiveCapsules', 'utilityCapsules', 'topCapsules', 'primaryAIStrategy'] },
+    { name: 'Build & Equipment', columns: ['buildComposition', 'meleeCost', 'blastCost', 'kiBlastCost', 'defenseCost', 'skillCost', 'kiEfficiencyCost', 'utilityCost', 'topCapsules', 'primaryAIStrategy'] },
     { name: 'Form Changes', columns: ['hasMultipleForms', 'formCount', 'formHistory'] }
   ],
   
@@ -160,7 +161,7 @@ export const getCharacterAveragesTableConfig = (darkMode = false) => ({
     {
       key: 'efficiency',
       header: 'Efficiency',
-      accessor: (row) => row.avgTaken > 0 ? row.avgDamage / row.avgTaken : 0,
+      accessor: (row) => row.totalTaken > 0 ? row.totalDamage / row.totalTaken : 0,
       sortType: 'number',
       sortable: true,
       filterable: false,
@@ -763,84 +764,137 @@ export const getCharacterAveragesTableConfig = (darkMode = false) => ({
     },
 
     // ========================================================================
-    // F. BUILD & EQUIPMENT (7 columns)
+    // F. BUILD & EQUIPMENT (10 columns - 7 build-type costs + composition + top capsules + AI strategy)
     // ========================================================================
     {
-      key: 'buildArchetype',
-      header: 'Build Type',
-      accessor: (row) => row.buildArchetype || 'No Build',
+      key: 'buildComposition',
+      header: 'Build Composition',
+      accessor: (row) => row.buildComposition || 'No Build',
       sortable: true,
       filterable: true,
       group: 'Build & Equipment',
       exportFormat: { alignment: 'center', colorCoded: true },
       render: (row, value) => {
-        const colors = {
-          'Aggressive': darkMode ? 'bg-red-900/30 text-red-300 border-red-600' : 'bg-red-100 text-red-700 border-red-300',
-          'Defensive': darkMode ? 'bg-green-900/30 text-green-300 border-green-600' : 'bg-green-100 text-green-700 border-green-300',
-          'Technical': darkMode ? 'bg-blue-900/30 text-blue-300 border-blue-600' : 'bg-blue-100 text-blue-700 border-blue-300',
-          'Hybrid': darkMode ? 'bg-purple-900/30 text-purple-300 border-purple-600' : 'bg-purple-100 text-purple-700 border-purple-300',
-          'No Build': darkMode ? 'bg-gray-700 text-gray-300 border-gray-600' : 'bg-gray-100 text-gray-600 border-gray-300'
-        };
+        if (value === 'No Build') {
+          return (
+            <span className={`inline-block px-2 py-1 rounded text-xs font-medium border ${darkMode ? 'bg-gray-700 text-gray-300 border-gray-600' : 'bg-gray-100 text-gray-600 border-gray-300'}`}>
+              {value}
+            </span>
+          );
+        }
+        
+        // Use getBuildTypeColor to get styling for new 7-category labels
+        const colorClasses = getBuildTypeColor(value, darkMode);
         return (
-          <span className={`inline-block px-2 py-1 rounded text-xs font-medium border ${colors[value] || colors['No Build']}`}>
+          <span className={`inline-block px-2 py-1 rounded text-xs font-medium border ${colorClasses}`}>
             {value}
           </span>
         );
       }
     },
     {
-      key: 'damageCapsules',
-      header: 'Damage Caps',
-      accessor: (row) => row.damageCapsules || 0,
+      key: 'meleeCost',
+      header: 'Melee',
+      accessor: (row) => row.meleeCost || 0,
       sortType: 'number',
       sortable: true,
       filterable: false,
       group: 'Build & Equipment',
       exportFormat: { alignment: 'right', numFmt: '0.0', heatmap: true },
       render: (row, value) => (
-        <span className="font-mono text-red-600">{value.toFixed(1)}</span>
+        <span className={`font-mono text-sm ${darkMode ? 'text-red-400' : 'text-red-600'}`}>
+          {value > 0 ? (Number.isInteger(value) ? value : value.toFixed(1)) : '—'}
+        </span>
       )
     },
     {
-      key: 'defensiveCapsules',
-      header: 'Def Caps',
-      accessor: (row) => row.defensiveCapsules || 0,
+      key: 'blastCost',
+      header: 'Blast',
+      accessor: (row) => row.blastCost || 0,
       sortType: 'number',
       sortable: true,
       filterable: false,
       group: 'Build & Equipment',
       exportFormat: { alignment: 'right', numFmt: '0.0', heatmap: true },
       render: (row, value) => (
-        <span className="font-mono text-green-600">{value.toFixed(1)}</span>
+        <span className={`font-mono text-sm ${darkMode ? 'text-orange-400' : 'text-orange-600'}`}>
+          {value > 0 ? (Number.isInteger(value) ? value : value.toFixed(1)) : '—'}
+        </span>
       )
     },
     {
-      key: 'utilityCapsules',
-      header: 'Utility Caps',
-      accessor: (row) => row.utilityCapsules || 0,
+      key: 'kiBlastCost',
+      header: 'Ki Blast',
+      accessor: (row) => row.kiBlastCost || 0,
       sortType: 'number',
       sortable: true,
       filterable: false,
       group: 'Build & Equipment',
       exportFormat: { alignment: 'right', numFmt: '0.0', heatmap: true },
       render: (row, value) => (
-        <span className="font-mono text-blue-600">{value.toFixed(1)}</span>
+        <span className={`font-mono text-sm ${darkMode ? 'text-yellow-400' : 'text-yellow-600'}`}>
+          {value > 0 ? (Number.isInteger(value) ? value : value.toFixed(1)) : '—'}
+        </span>
       )
     },
     {
-      key: 'totalCapsuleCost',
-      header: 'Capsule Cost',
-      accessor: (row) => row.totalCapsuleCost || 0,
+      key: 'defenseCost',
+      header: 'Defense',
+      accessor: (row) => row.defenseCost || 0,
       sortType: 'number',
       sortable: true,
       filterable: false,
       group: 'Build & Equipment',
-      exportFormat: { alignment: 'right', numFmt: '$#,##0' },
+      exportFormat: { alignment: 'right', numFmt: '0.0', heatmap: true },
       render: (row, value) => (
-        <div className="flex items-center gap-1">
-          <Package className="w-4 h-4 text-gray-500" />
-          <span className="font-mono">{value}</span>
-        </div>
+        <span className={`font-mono text-sm ${darkMode ? 'text-blue-400' : 'text-blue-600'}`}>
+          {value > 0 ? (Number.isInteger(value) ? value : value.toFixed(1)) : '—'}
+        </span>
+      )
+    },
+    {
+      key: 'skillCost',
+      header: 'Skill',
+      accessor: (row) => row.skillCost || 0,
+      sortType: 'number',
+      sortable: true,
+      filterable: false,
+      group: 'Build & Equipment',
+      exportFormat: { alignment: 'right', numFmt: '0.0', heatmap: true },
+      render: (row, value) => (
+        <span className={`font-mono text-sm ${darkMode ? 'text-purple-400' : 'text-purple-600'}`}>
+          {value > 0 ? (Number.isInteger(value) ? value : value.toFixed(1)) : '—'}
+        </span>
+      )
+    },
+    {
+      key: 'kiEfficiencyCost',
+      header: 'Ki Efficiency',
+      accessor: (row) => row.kiEfficiencyCost || 0,
+      sortType: 'number',
+      sortable: true,
+      filterable: false,
+      group: 'Build & Equipment',
+      exportFormat: { alignment: 'right', numFmt: '0.0', heatmap: true },
+      render: (row, value) => (
+        <span className={`font-mono text-sm ${darkMode ? 'text-green-400' : 'text-green-600'}`}>
+          {value > 0 ? (Number.isInteger(value) ? value : value.toFixed(1)) : '—'}
+        </span>
+      )
+    },
+    {
+      key: 'utilityCost',
+      header: 'Utility',
+      accessor: (row) => row.utilityCost || 0,
+      sortType: 'number',
+      sortable: true,
+      filterable: false,
+      group: 'Build & Equipment',
+      exportFormat: { alignment: 'right', numFmt: '0.0', heatmap: true },
+      render: (row, value) => (
+        <span className={`font-mono text-sm ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
+          {value > 0 ? (Number.isInteger(value) ? value : value.toFixed(1)) : '—'}
+        </span>
       )
     },
     {
@@ -954,6 +1008,8 @@ export const prepareCharacterAveragesData = (aggregatedData) => {
   matchCount: char.matchCount || 0,
   // Number of matches with non-zero battle time
   activeMatchCount: char.activeMatchCount || 0,
+    wins: char.wins || 0,
+    losses: char.losses || 0,
     
     // Combat Performance
     avgDamage: Math.round(char.avgDamage || 0),
@@ -1005,12 +1061,16 @@ export const prepareCharacterAveragesData = (aggregatedData) => {
     totalKills: char.totalKills || 0,
     avgKills: char.avgKills || 0,
     
-    // Build & Equipment
-    buildArchetype: char.primaryBuildArchetype || 'No Build',
-    damageCapsules: char.avgDamageCaps || 0,
-    defensiveCapsules: char.avgDefensiveCaps || 0,
-    utilityCapsules: char.avgUtilityCaps || 0,
-    totalCapsuleCost: char.avgCapsuleCost || 0,
+    // Build & Equipment - Extract costs from primaryBuildComposition breakdown
+    buildComposition: char.primaryBuildComposition || 'No Build',
+    // Get cost breakdown from the most recent match's buildComposition (or calculate average if needed)
+    meleeCost: char.avgMeleeCost || 0,
+    blastCost: char.avgBlastCost || 0,
+    kiBlastCost: char.avgKiBlastCost || 0,
+    defenseCost: char.avgDefenseCost || 0,
+    skillCost: char.avgSkillCost || 0,
+    kiEfficiencyCost: char.avgKiEfficiencyCost || 0,
+    utilityCost: char.avgUtilityCost || 0,
     topCapsules: char.topCapsules || [],
     
     // Form Changes
@@ -1043,7 +1103,7 @@ export const getMatchDetailsTableConfig = (darkMode = false) => ({
     { name: 'Survival & Health', columns: ['hpRemaining', 'hpMax', 'hpRetention', 'guards', 'revengeCounters', 'superCounters', 'zCounters', 'tags'] },
     { name: 'Special Abilities', columns: ['s1Blast', 's1HitBlast', 's1HitRate', 's2Blast', 's2HitBlast', 's2HitRate', 'ultBlast', 'uLTHitBlast', 'ultHitRate', 'skill1', 'skill2', 'ultimates', 'kiBlasts', 'charges', 'sparkings', 'dragonDashMileage'] },
     { name: 'Combat Mechanics', columns: ['maxComboHits', 'maxComboDamage', 'throws', 'lightningAttacks', 'vanishingAttacks', 'dragonHoming', 'speedImpacts', 'speedImpactWins', 'speedImpactWinRate', 'sparkingComboHits'] },
-    { name: 'Build & Equipment', columns: ['buildArchetype', 'capsule1', 'capsule2', 'capsule3', 'capsule4', 'capsule5', 'capsule6', 'capsule7', 'totalCapsuleCost', 'damageCaps', 'defensiveCaps', 'utilityCaps', 'aiStrategy'] },
+    { name: 'Build & Equipment', columns: ['buildComposition', 'capsule1', 'capsule2', 'capsule3', 'capsule4', 'capsule5', 'capsule6', 'capsule7', 'meleeCost', 'blastCost', 'kiBlastCost', 'defenseCost', 'skillCost', 'kiEfficiencyCost', 'utilityCost', 'aiStrategy'] },
     { name: 'Form Changes', columns: ['startedAs', 'formsUsed', 'formChangeCount'] }
   ],
   
@@ -1766,26 +1826,29 @@ export const getMatchDetailsTableConfig = (darkMode = false) => ({
     },
 
     // ========================================================================
-    // F. BUILD & EQUIPMENT (13 columns - supports up to 7 capsules)
+    // F. BUILD & EQUIPMENT (15 columns - 7 capsules + buildComposition + 7 build-type costs)
     // ========================================================================
     {
-      key: 'buildArchetype',
-      header: 'Build',
-      accessor: (row) => row.buildArchetype || 'No Build',
+      key: 'buildComposition',
+      header: 'Build Comp',
+      accessor: (row) => row.buildComposition || 'No Build',
       sortable: true,
       filterable: true,
       group: 'Build & Equipment',
       exportFormat: { alignment: 'center', colorCoded: true },
       render: (row, value) => {
-        const colors = {
-          'Aggressive': darkMode ? 'bg-red-900/30 text-red-300' : 'bg-red-100 text-red-700',
-          'Defensive': darkMode ? 'bg-green-900/30 text-green-300' : 'bg-green-100 text-green-700',
-          'Technical': darkMode ? 'bg-blue-900/30 text-blue-300' : 'bg-blue-100 text-blue-700',
-          'Hybrid': darkMode ? 'bg-purple-900/30 text-purple-300' : 'bg-purple-100 text-purple-700',
-          'No Build': darkMode ? 'bg-gray-700 text-gray-300' : 'bg-gray-100 text-gray-600'
-        };
+        if (value === 'No Build') {
+          return (
+            <span className={`inline-block px-2 py-1 rounded text-xs font-medium ${darkMode ? 'bg-gray-700 text-gray-300' : 'bg-gray-100 text-gray-600'}`}>
+              {value}
+            </span>
+          );
+        }
+        
+        // Use getBuildTypeColor for 7-category labels
+        const colorClasses = getBuildTypeColor(value, darkMode);
         return (
-          <span className={`inline-block px-2 py-1 rounded text-xs font-medium ${colors[value] || colors['No Build']}`}>
+          <span className={`inline-block px-2 py-1 rounded text-xs font-medium ${colorClasses}`}>
             {value}
           </span>
         );
@@ -1794,7 +1857,7 @@ export const getMatchDetailsTableConfig = (darkMode = false) => ({
     // Capsule slots 1-7
     ...[1, 2, 3, 4, 5, 6, 7].map(num => ({
       key: `capsule${num}`,
-      header: `Capsule ${num}`,
+      header: `Cap ${num}`,
       accessor: (row) => {
         const capsules = row.equippedCapsules || [];
         return capsules[num - 1]?.capsule?.name || capsules[num - 1]?.id || '—';
@@ -1810,58 +1873,108 @@ export const getMatchDetailsTableConfig = (darkMode = false) => ({
       )
     })),
     {
-      key: 'totalCapsuleCost',
-      header: 'Total Cost',
-      accessor: (row) => row.totalCapsuleCost || 0,
-      sortType: 'number',
-      sortable: true,
-      filterable: false,
-      group: 'Build & Equipment',
-      exportFormat: { alignment: 'right', numFmt: '$#,##0' },
-      render: (row, value) => (
-        <div className="flex items-center gap-1">
-          <Package className="w-4 h-4 text-gray-500" />
-          <span className="font-mono">{value}</span>
-        </div>
-      )
-    },
-    {
-      key: 'damageCaps',
-      header: 'Dmg',
-      accessor: (row) => row.capsuleTypes?.damage || 0,
+      key: 'meleeCost',
+      header: 'Melee',
+      accessor: (row) => row.meleeCost || 0,
       sortType: 'number',
       sortable: true,
       filterable: false,
       group: 'Build & Equipment',
       exportFormat: { alignment: 'right', numFmt: '0' },
       render: (row, value) => (
-        <span className="font-mono text-red-600 text-xs">{value}</span>
+        <span className={`font-mono text-xs ${darkMode ? 'text-red-400' : 'text-red-600'}`}>
+          {value > 0 ? value : '—'}
+        </span>
       )
     },
     {
-      key: 'defensiveCaps',
-      header: 'Def',
-      accessor: (row) => row.capsuleTypes?.defensive || 0,
+      key: 'blastCost',
+      header: 'Blast',
+      accessor: (row) => row.blastCost || 0,
       sortType: 'number',
       sortable: true,
       filterable: false,
       group: 'Build & Equipment',
       exportFormat: { alignment: 'right', numFmt: '0' },
       render: (row, value) => (
-        <span className="font-mono text-green-600 text-xs">{value}</span>
+        <span className={`font-mono text-xs ${darkMode ? 'text-orange-400' : 'text-orange-600'}`}>
+          {value > 0 ? value : '—'}
+        </span>
       )
     },
     {
-      key: 'utilityCaps',
-      header: 'Util',
-      accessor: (row) => row.capsuleTypes?.utility || 0,
+      key: 'kiBlastCost',
+      header: 'Ki Blast',
+      accessor: (row) => row.kiBlastCost || 0,
       sortType: 'number',
       sortable: true,
       filterable: false,
       group: 'Build & Equipment',
       exportFormat: { alignment: 'right', numFmt: '0' },
       render: (row, value) => (
-        <span className="font-mono text-blue-600 text-xs">{value}</span>
+        <span className={`font-mono text-xs ${darkMode ? 'text-yellow-400' : 'text-yellow-600'}`}>
+          {value > 0 ? value : '—'}
+        </span>
+      )
+    },
+    {
+      key: 'defenseCost',
+      header: 'Defense',
+      accessor: (row) => row.defenseCost || 0,
+      sortType: 'number',
+      sortable: true,
+      filterable: false,
+      group: 'Build & Equipment',
+      exportFormat: { alignment: 'right', numFmt: '0' },
+      render: (row, value) => (
+        <span className={`font-mono text-xs ${darkMode ? 'text-blue-400' : 'text-blue-600'}`}>
+          {value > 0 ? value : '—'}
+        </span>
+      )
+    },
+    {
+      key: 'skillCost',
+      header: 'Skill',
+      accessor: (row) => row.skillCost || 0,
+      sortType: 'number',
+      sortable: true,
+      filterable: false,
+      group: 'Build & Equipment',
+      exportFormat: { alignment: 'right', numFmt: '0' },
+      render: (row, value) => (
+        <span className={`font-mono text-xs ${darkMode ? 'text-purple-400' : 'text-purple-600'}`}>
+          {value > 0 ? value : '—'}
+        </span>
+      )
+    },
+    {
+      key: 'kiEfficiencyCost',
+      header: 'Ki Eff',
+      accessor: (row) => row.kiEfficiencyCost || 0,
+      sortType: 'number',
+      sortable: true,
+      filterable: false,
+      group: 'Build & Equipment',
+      exportFormat: { alignment: 'right', numFmt: '0' },
+      render: (row, value) => (
+        <span className={`font-mono text-xs ${darkMode ? 'text-green-400' : 'text-green-600'}`}>
+          {value > 0 ? value : '—'}
+        </span>
+      )
+    },
+    {
+      key: 'utilityCost',
+      header: 'Utility',
+      accessor: (row) => row.utilityCost || 0,
+      sortType: 'number',
+      sortable: true,
+      filterable: false,
+      group: 'Build & Equipment',
+      exportFormat: { alignment: 'right', numFmt: '0' },
+      render: (row, value) => (
+        <span className={`font-mono text-xs ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
+          {value > 0 ? value : '—'}
+        </span>
       )
     },
     {
@@ -2005,11 +2118,17 @@ export const prepareMatchDetailsData = (aggregatedData) => {
         speedImpactWins: match.speedImpactWins || 0,
         sparkingComboCount: match.sparkingComboCount || 0,
         
-        // Build & Equipment
-        buildArchetype: match.buildArchetype || 'No Build',
+        // Build & Equipment - Extract costs from buildComposition breakdown
+        buildComposition: match.buildComposition?.label || 'No Build',
         equippedCapsules: match.equippedCapsules || [],
-        totalCapsuleCost: match.totalCapsuleCost || 0,
-        capsuleTypes: match.capsuleTypes || { damage: 0, defensive: 0, utility: 0 },
+        // Extract individual build-type costs from buildComposition breakdown
+        meleeCost: match.buildComposition?.breakdown?.find(b => b.name === 'Melee')?.cost || 0,
+        blastCost: match.buildComposition?.breakdown?.find(b => b.name === 'Blast')?.cost || 0,
+        kiBlastCost: match.buildComposition?.breakdown?.find(b => b.name === 'Ki Blast')?.cost || 0,
+        defenseCost: match.buildComposition?.breakdown?.find(b => b.name === 'Defense')?.cost || 0,
+        skillCost: match.buildComposition?.breakdown?.find(b => b.name === 'Skill')?.cost || 0,
+        kiEfficiencyCost: match.buildComposition?.breakdown?.find(b => b.name === 'Ki Efficiency')?.cost || 0,
+        utilityCost: match.buildComposition?.breakdown?.find(b => b.name === 'Utility')?.cost || 0,
         aiStrategy: match.aiStrategy || char.primaryAIStrategy || 'Unknown',
         
         // Form Changes

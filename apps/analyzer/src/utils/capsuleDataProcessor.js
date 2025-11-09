@@ -101,6 +101,22 @@ function parseCSVLine(line) {
 }
 
 /**
+ * Normalize build type from metadata format to display format
+ * Converts "ki-blast" -> "Ki Blast", "ki-efficiency" -> "Ki Efficiency"
+ * @param {String} buildType - Build type from metadata (hyphenated, lowercase)
+ * @returns {String} Normalized build type (capitalized, spaces)
+ */
+function normalizeBuildType(buildType) {
+  if (!buildType) return 'Unknown';
+  
+  // Convert hyphens to spaces and capitalize each word
+  return buildType
+    .split('-')
+    .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(' ');
+}
+
+/**
  * Process capsules with metadata enrichment (build types, effect tags)
  * @param {Array} capsules - Raw capsule data from CSV
  * @returns {Array} Enriched capsules with metadata
@@ -110,13 +126,15 @@ export function processCapsules(capsules) {
     const metadata = capsuleMetadata.capsules[capsule.id];
     
     if (metadata) {
+      const normalizedBuildType = normalizeBuildType(metadata.buildType);
       return {
         ...capsule,
-        buildType: metadata.buildType,
+        effect: metadata.effect || capsule.effect, // Use metadata effect (has full multi-line text)
+        buildType: normalizedBuildType,  // Normalized: "Ki Blast", "Ki Efficiency"
         effectTags: metadata.effectTags,
         trackedActions: metadata.trackedActions,
         // Keep archetype for backward compatibility during transition
-        archetype: metadata.buildType
+        archetype: normalizedBuildType
       };
     }
     

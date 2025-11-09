@@ -66,13 +66,14 @@ export function calculateCapsulePerformance(aggregatedData, capsuleMap) {
     });
   });
 
-  // Calculate averages and composite scores
+  // Calculate performance metrics and composite scores
   const performanceMap = {};
   
   Object.entries(capsuleStats).forEach(([capsuleId, stat]) => {
     const avgDamageDealt = stat.totalMatches > 0 ? stat.totalDamage / stat.totalMatches : 0;
     const avgDamageTaken = stat.totalMatches > 0 ? stat.totalDamageTaken / stat.totalMatches : 0;
-    const damageEfficiency = avgDamageTaken > 0 ? avgDamageDealt / avgDamageTaken : 0;
+    // Use total-based efficiency calculation (aggregate then calculate)
+    const damageEfficiency = stat.totalDamageTaken > 0 ? stat.totalDamage / stat.totalDamageTaken : 0;
     const winRate = stat.totalMatches > 0 ? (stat.wins / stat.totalMatches) * 100 : 0;
     
     // Calculate composite score (0-100 scale)
@@ -174,12 +175,13 @@ export function calculatePairSynergies(aggregatedData, capsuleMap) {
     });
   });
 
-  // Calculate averages and return as map
+  // Calculate performance metrics and return as map
   const pairMap = {};
   Object.entries(pairStats).forEach(([pairKey, stat]) => {
     const avgDamageDealt = stat.appearances > 0 ? stat.totalDamage / stat.appearances : 0;
     const avgDamageTaken = stat.appearances > 0 ? stat.totalDamageTaken / stat.appearances : 0;
-    const damageEfficiency = avgDamageTaken > 0 ? avgDamageDealt / avgDamageTaken : 0;
+    // Use total-based efficiency calculation (aggregate then calculate)
+    const damageEfficiency = stat.totalDamageTaken > 0 ? stat.totalDamage / stat.totalDamageTaken : 0;
     const pairWinRate = stat.appearances > 0 ? (stat.wins / stat.appearances) * 100 : 0;
     
     pairMap[pairKey] = {

@@ -11,9 +11,12 @@
  * Created: November 5, 2025
  * Updated: November 6, 2025 - Switched to build type system
  * Updated: November 6, 2025 - Added scrollable table and tooltips
+ * Updated: November 7, 2025 - Migrated to floating-ui for tooltips
  */
 
 import React, { useState, useMemo } from 'react';
+import { createPortal } from 'react-dom';
+import { useFloating, offset, flip, shift, autoUpdate } from '@floating-ui/react';
 import * as XLSX from 'xlsx';
 import { Info } from 'lucide-react';
 
@@ -24,7 +27,13 @@ export default function IndividualCapsulePerformance({ performanceData, capsuleM
   const [filterAIStrategy, setFilterAIStrategy] = useState('all');
   const [searchTerm, setSearchTerm] = useState('');
   const [hoveredCapsule, setHoveredCapsule] = useState(null);
-  const [tooltipPosition, setTooltipPosition] = useState({ x: 0, y: 0 });
+
+  // Use floating-ui for tooltip positioning
+  const { x, y, strategy, refs, floatingStyles } = useFloating({
+    placement: 'right-start',
+    middleware: [offset(20), flip(), shift({ padding: 10 })],
+    whileElementsMounted: autoUpdate,
+  });
 
   // Process and sort data
   const tableData = useMemo(() => {
@@ -125,55 +134,12 @@ export default function IndividualCapsulePerformance({ performanceData, capsuleM
     return Object.keys(aiCompatibilityData).sort();
   }, [aiCompatibilityData]);
 
-  // Handle tooltip positioning with boundary detection
+  // Handle tooltip display
   const handleMouseEnter = (capsule, event) => {
-    if (!capsule) return; // Safety check
+    if (!capsule) return;
+    // Set the reference element to the current target
+    refs.setReference(event.currentTarget);
     setHoveredCapsule(capsule);
-    
-    const offsetX = 15;
-    const offsetY = -15; // Negative to place above cursor
-    const tooltipWidth = 384;
-    const tooltipHeight = 300;
-    
-    let x = event.clientX + offsetX;
-    let y = event.clientY + offsetY;
-    
-    // Keep within viewport
-    if (x + tooltipWidth > window.innerWidth) {
-      x = event.clientX - tooltipWidth - offsetX;
-    }
-    if (y < 0) {
-      y = event.clientY + 25; // Place below cursor if no room above
-    }
-    if (y + tooltipHeight > window.innerHeight) {
-      y = window.innerHeight - tooltipHeight - 10;
-    }
-    
-    setTooltipPosition({ x, y });
-  };
-
-  const handleMouseMove = (event) => {
-    if (!hoveredCapsule) return;
-    
-    const offsetX = 15;
-    const offsetY = -15;
-    const tooltipWidth = 384;
-    const tooltipHeight = 300;
-    
-    let x = event.clientX + offsetX;
-    let y = event.clientY + offsetY;
-    
-    if (x + tooltipWidth > window.innerWidth) {
-      x = event.clientX - tooltipWidth - offsetX;
-    }
-    if (y < 0) {
-      y = event.clientY + 25;
-    }
-    if (y + tooltipHeight > window.innerHeight) {
-      y = window.innerHeight - tooltipHeight - 10;
-    }
-    
-    setTooltipPosition({ x, y });
   };
 
   const handleMouseLeave = () => {
@@ -288,16 +254,14 @@ export default function IndividualCapsulePerformance({ performanceData, capsuleM
                     idx % 2 === 0 ? 'bg-gray-900/30' : 'bg-gray-900/10'
                   }`}
                 >
-                  <td 
-                    className="px-4 py-3 text-gray-200 cursor-help relative"
-                    onMouseEnter={(e) => handleMouseEnter(capsuleData, e)}
-                    onMouseMove={handleMouseMove}
-                    onMouseLeave={handleMouseLeave}
-                  >
-                    <div className="flex items-center gap-2">
-                      <span className="font-medium">{row.name}</span>
-                      <Info className="w-3 h-3 text-gray-500 opacity-0 group-hover:opacity-100 transition-opacity" />
-                    </div>
+                  <td className="px-4 py-3 text-gray-200 relative">
+                    <span 
+                      className="font-medium cursor-help"
+                      onMouseEnter={(e) => handleMouseEnter(capsuleData, e)}
+                      onMouseLeave={handleMouseLeave}
+                    >
+                      {row.name}
+                    </span>
                   </td>
                 <td className="px-4 py-3">
                   <span className={`px-2 py-1 rounded text-xs font-semibold ${getBuildTypeBadgeClass(row.buildType)}`}>
@@ -361,43 +325,34 @@ export default function IndividualCapsulePerformance({ performanceData, capsuleM
       </div>
 
       {/* Tooltip */}
-      {hoveredCapsule && (
+      {hoveredCapsule && typeof document !== 'undefined' && createPortal(
         <div
-          className="fixed z-[9999] pointer-events-none"
-          style={{
-            left: `${tooltipPosition.x}px`,
-            top: `${tooltipPosition.y}px`,
-          }}
+          ref={refs.setFloating}
+          style={{ ...floatingStyles, width: '32rem', maxWidth: '32rem' }}
+          className="z-[9999] bg-gray-800 border border-gray-600 rounded-lg shadow-2xl p-4"
         >
-          <div className="bg-gray-800 border border-gray-600 rounded-lg shadow-2xl p-4 max-w-md">
-            <div className="mb-2 pb-2 border-b border-gray-700">
-              <h4 className="font-bold text-white text-lg">{hoveredCapsule.name}</h4>
-              <div className="flex items-center gap-2 mt-1">
-                <span className={`px-2 py-1 rounded text-xs font-semibold ${getBuildTypeBadgeClass(hoveredCapsule.buildType)}`}>
-                  {hoveredCapsule.buildType}
-                </span>
-                <span className="text-sm text-gray-400">Cost: {hoveredCapsule.cost}</span>
-                {hoveredCapsule.exclusiveTo && (
-                  <span className="text-xs text-purple-400">({hoveredCapsule.exclusiveTo})</span>
-                )}
-              </div>
+          <div className="mb-3 pb-3 border-b border-gray-700">
+            <h4 className="font-bold text-white text-lg">{hoveredCapsule.name}</h4>
+            <div className="flex items-center gap-2 mt-1">
+              <span className={`px-2 py-1 rounded text-xs font-semibold ${getBuildTypeBadgeClass(hoveredCapsule.buildType)}`}>
+                {hoveredCapsule.buildType}
+              </span>
+              <span className="text-sm text-gray-400">Cost: {hoveredCapsule.cost}</span>
+              {hoveredCapsule.exclusiveTo && (
+                <span className="text-xs text-purple-400">({hoveredCapsule.exclusiveTo})</span>
+              )}
             </div>
-            <div className="text-sm text-gray-300 leading-relaxed whitespace-pre-line">
-              {hoveredCapsule.effect || 'No effect description available'}
-            </div>
-            {hoveredCapsule.effectTags && hoveredCapsule.effectTags.length > 0 && (
-              <div className="mt-3 pt-2 border-t border-gray-700">
-                <div className="flex flex-wrap gap-1">
-                  {hoveredCapsule.effectTags.map(tag => (
-                    <span key={tag} className="px-2 py-0.5 bg-gray-700 text-gray-300 rounded text-xs">
-                      {tag}
-                    </span>
-                  ))}
-                </div>
-              </div>
-            )}
           </div>
-        </div>
+          <div className="text-sm text-gray-300 leading-relaxed">
+            {(hoveredCapsule.effect || 'No effect description available')
+              .split(/\\r\\n|\\n|\r\n|\n/)
+              .map((line, idx) => (
+                <div key={idx}>{line}</div>
+              ))
+            }
+          </div>
+        </div>,
+        document.body
       )}
     </div>
   );
@@ -427,19 +382,19 @@ function SortableHeader({ label, column, sortBy, sortDir, onSort }) {
 function getBuildTypeBadgeClass(buildType) {
   switch (buildType) {
     case 'Melee':
-      return 'bg-red-900/50 text-red-300';
+      return 'bg-red-900/70 text-red-300 border border-red-700/50';
     case 'Blast':
-      return 'bg-orange-900/50 text-orange-300';
+      return 'bg-orange-900/70 text-orange-300 border border-orange-700/50';
     case 'Ki Blast':
-      return 'bg-yellow-900/50 text-yellow-300';
+      return 'bg-yellow-900/70 text-yellow-300 border border-yellow-700/50';
     case 'Defense':
-      return 'bg-blue-900/50 text-blue-300';
+      return 'bg-blue-900/70 text-blue-300 border border-blue-700/50';
     case 'Skill':
-      return 'bg-purple-900/50 text-purple-300';
+      return 'bg-purple-900/70 text-purple-300 border border-purple-700/50';
     case 'Ki Efficiency':
-      return 'bg-green-900/50 text-green-300';
+      return 'bg-green-900/70 text-green-300 border border-green-700/50';
     case 'Utility':
-      return 'bg-gray-700/50 text-gray-300';
+      return 'bg-gray-700/70 text-gray-300 border border-gray-600/50';
     default:
       return 'bg-gray-800 text-gray-400';
   }

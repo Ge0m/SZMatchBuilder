@@ -470,7 +470,7 @@ function applyConditionalFormattingToColumns(sheet, columns, groupName, lastData
     const colLetter = getColumnLetter(excelCol);
 
     // Skip non-numeric columns
-    if (['name', 'primaryTeam', 'primaryAIStrategy', 'buildArchetype', 'topCapsules', 
+    if (['name', 'primaryTeam', 'primaryAIStrategy', 'buildComposition', 'topCapsules', 
          'formHistory', 'hasMultipleForms', 'team', 'opponentTeam', 'fileName',
          'formsUsed', 'startedAs', 'matchResult', 'aiStrategy'].includes(colKey)) {
       return;
@@ -562,7 +562,8 @@ function applyColumnFormatting(cell, column, rowValues, rowNumber, timeColumnAve
        'avgCharges', 'avgSparking', 'avgDragonDashMileage', 'avgMaxCombo', 'avgThrows',
        'avgLightningAttacks', 'avgVanishingAttacks', 'avgDragonHoming', 'avgSpeedImpacts',
        'avgSparkingCombo', 'avgKills', 'avgGuards', 'avgRevengeCounters', 'avgSuperCounters',
-       'avgZCounters', 'avgTags', 'damageCapsules', 'defensiveCapsules', 'utilityCapsules'].includes(key)) {
+       'avgZCounters', 'avgTags', 'avgMeleeCost', 'avgBlastCost', 'avgKiBlastCost', 
+       'avgDefenseCost', 'avgSkillCost', 'avgKiEfficiencyCost', 'avgUtilityCost'].includes(key)) {
     cell.numFmt = '0.0';
     cell.alignment = { horizontal: 'right' };
   }
@@ -645,24 +646,58 @@ function applyColumnFormatting(cell, column, rowValues, rowNumber, timeColumnAve
     // Don't apply fill here - let conditional formatting handle it
   }
 
-  // Build Archetype - colored icons instead of background colors
-  if (key === 'buildArchetype') {
+  // Build Composition (new 7-category system) - colored display with label
+  if (key === 'buildComposition') {
     cell.alignment = { horizontal: 'center' };
     const value = cell.value || 'No Build';
     
-    const iconMap = {
-      'Aggressive': { icon: '⚔️', color: 'FFB91C1C' },    // Crossed swords - red
-      'Defensive': { icon: '🛡️', color: 'FF047857' },    // Shield - green
-      'Technical': { icon: '⚙️', color: 'FF1D4ED8' },    // Gear - blue
-      'Hybrid': { icon: '🔀', color: 'FF6D28D9' },       // Shuffle/mix - purple
-      'No Build': { icon: '—', color: 'FF6B7280' }       // Em dash - gray
+    // Map 7-category build types and compositions to colors
+    // Matches getBuildTypeColor() in App.jsx but uses Excel ARGB format
+    const colorMap = {
+      // Pure builds
+      'Pure Melee': 'FFDC2626',           // red-600
+      'Pure Blast': 'FFEA580C',           // orange-600
+      'Pure Ki Blast': 'FFCA8A04',        // yellow-600
+      'Pure Defense': 'FF2563EB',         // blue-600
+      'Pure Skill': 'FF9333EA',           // purple-600
+      'Pure Ki Efficiency': 'FF16A34A',   // green-600
+      'Pure Utility': 'FF4B5563',         // gray-600
+      
+      // Focused builds
+      'Melee-Focused': 'FFEF4444',        // red-500
+      'Blast-Focused': 'FFF97316',        // orange-500
+      'Ki Blast-Focused': 'FFEAB308',     // yellow-500
+      'Defense-Focused': 'FF3B82F6',      // blue-500
+      'Skill-Focused': 'FFA855F7',        // purple-500
+      'Ki Efficiency-Focused': 'FF22C55E', // green-500
+      'Utility-Focused': 'FF6B7280',      // gray-500
+      
+      // Dual builds (use primary color at lighter shade)
+      'Melee/Blast': 'FFF87171',          // red-400
+      'Melee/Ki Blast': 'FFF87171',
+      'Melee/Defense': 'FFF87171',
+      'Melee/Skill': 'FFF87171',
+      'Melee/Ki Efficiency': 'FFF87171',
+      'Blast/Ki Blast': 'FFFBBF24',
+      'Blast/Defense': 'FFFB923C',
+      'Blast/Skill': 'FFFB923C',
+      'Blast/Ki Efficiency': 'FFFB923C',
+      'Ki Blast/Defense': 'FFFCD34D',
+      'Ki Blast/Skill': 'FFFCD34D',
+      'Ki Blast/Ki Efficiency': 'FFFCD34D',
+      'Defense/Skill': 'FF60A5FA',
+      'Defense/Ki Efficiency': 'FF60A5FA',
+      'Skill/Ki Efficiency': 'FFC084FC',
+      
+      // Balanced
+      'Balanced Hybrid': 'FFA855F7',      // purple-500
+      'No Build': 'FF6B7280'              // gray-500
     };
 
-    const buildInfo = iconMap[value] || iconMap['No Build'];
-    cell.value = `${buildInfo.icon} ${value}`;
+    const buildColor = colorMap[value] || colorMap['No Build'];
     
     // Use white color for team rows for better visibility on maroon background
-    const textColor = isTeamRow ? 'FFFFFFFF' : buildInfo.color;
+    const textColor = isTeamRow ? 'FFFFFFFF' : buildColor;
     cell.font = { bold: true, color: { argb: textColor }, size: 10 };
     cell.alignment = { horizontal: 'center' };
   }
@@ -803,7 +838,7 @@ function calculateColumnWidth(header, key) {
     'survivalRate': 13,  // Reduced from 16
     
     // Build & Capsule columns - optimized
-    'buildArchetype': 14,  // Reduced from 18
+    'buildComposition': 20,  // New 7-category system (wider for longer labels like "Melee/Defense")
     'capsule1': 32,  // Reduced from 35
     'capsule2': 32,  // Reduced from 35
     'capsule3': 32,  // Reduced from 35
@@ -811,15 +846,24 @@ function calculateColumnWidth(header, key) {
     'capsule5': 32,  // Reduced from 35
     'capsule6': 32,  // Reduced from 35
     'capsule7': 32,  // Reduced from 35
-    'totalCapsuleCost': 12,  // Reduced from 14
-    'damageCaps': 11,  // Reduced from 12
-    'defensiveCaps': 11,  // Reduced from 12
-    'utilityCaps': 11,  // Reduced from 12
-    'damageCapsules': 11,  // Reduced from 12
-    'defensiveCapsules': 12,  // Reduced from 14
-    'utilityCapsules': 11,  // Reduced from 12
+    // Build-type cost columns (new 7-category system)
+    'meleeCost': 10,
+    'blastCost': 10,
+    'kiBlastCost': 11,
+    'defenseCost': 11,
+    'skillCost': 10,
+    'kiEfficiencyCost': 13,
+    'utilityCost': 10,
+    'avgMeleeCost': 11,
+    'avgBlastCost': 11,
+    'avgKiBlastCost': 12,
+    'avgDefenseCost': 12,
+    'avgSkillCost': 11,
+    'avgKiEfficiencyCost': 14,
+    'avgUtilityCost': 11,
     'topCapsules': 55,  // Reduced from 60
     'aiStrategy': 30,  // EXPANDED from 25 to prevent cutoff
+    'primaryAIStrategy': 30,
     
     // Form columns - optimized
     'formHistory': 55,  // Reduced from 60
@@ -1049,9 +1093,13 @@ async function generateTeamPerformanceMatrix(workbook, data, includeFormatting) 
     'avgVanishingAttacks': 'Vanishing',
     'avgDragonHoming': 'Dragon Homing',
     'avgSpeedImpacts': 'Speed Impacts',
-    'damageCapsules': 'Damage Capsules',
-    'defensiveCapsules': 'Defense Capsules',
-    'utilityCapsules': 'Utility Capsules'
+    'avgMeleeCost': 'Melee',
+    'avgBlastCost': 'Blast',
+    'avgKiBlastCost': 'Ki Blast',
+    'avgDefenseCost': 'Defense',
+    'avgSkillCost': 'Skill',
+    'avgKiEfficiencyCost': 'Ki Efficiency',
+    'avgUtilityCost': 'Utility'
   };
   
   // Store original headers for character rows, update for team display
@@ -1160,10 +1208,7 @@ async function generateTeamPerformanceMatrix(workbook, data, includeFormatting) 
       'avgLightningAttacks': 'top5TotalLightning',
       'avgVanishingAttacks': 'top5TotalVanishing',
       'avgDragonHoming': 'top5TotalDragonHoming',
-      'avgSpeedImpacts': 'top5TotalSpeedImpacts',
-      'damageCapsules': 'top5TotalDamageCapsules',
-      'defensiveCapsules': 'top5TotalDefenseCapsules',
-      'utilityCapsules': 'top5TotalUtilityCapsules'
+      'avgSpeedImpacts': 'top5TotalSpeedImpacts'
     };
     
     // Add team summary row
@@ -1345,8 +1390,8 @@ function applyTeamMatrixFormatting(sheet, columns, columnGroups, dataRowCount, t
         };
         
         // CRITICAL: Ensure key columns stay white on team rows
-        // Team name, character name, combat score, and build type should be white for visibility
-        if (column.key === 'name' || column.key === 'combatScore' || column.key === 'combatPerformanceScore' || column.key === 'buildArchetype') {
+        // Team name, character name, combat score, and build composition should be white for visibility
+        if (column.key === 'name' || column.key === 'combatScore' || column.key === 'combatPerformanceScore' || column.key === 'buildComposition') {
           cell.font = { bold: true, color: { argb: 'FFFFFFFF' }, size: 11 };
         }
         
@@ -1544,7 +1589,7 @@ function applyTeamGroupConditionalFormatting(sheet, columns, teamGroups) {
         const colLetter = getColumnLetter(excelCol);
 
         // Skip non-numeric columns
-        if (['name', 'primaryTeam', 'primaryAIStrategy', 'buildArchetype', 'topCapsules', 
+        if (['name', 'primaryTeam', 'primaryAIStrategy', 'buildComposition', 'topCapsules', 
              'formHistory', 'hasMultipleForms', 'team', 'opponentTeam', 'fileName',
              'formsUsed', 'startedAs', 'matchResult', 'aiStrategy'].includes(colKey)) {
           return;

@@ -10,6 +10,7 @@
  */
 
 import React, { useState, useEffect, useMemo } from 'react';
+import { MultiSelectCombobox } from './MultiSelectCombobox.jsx';
 import { loadCapsuleData } from '../utils/capsuleDataProcessor.js';
 import { calculateCapsulePerformance, calculateAIStrategyCapsuleCompatibility } from '../utils/capsuleSynergyCalculator.js';
 import IndividualCapsulePerformance from './capsule-synergy/IndividualCapsulePerformance.jsx';
@@ -25,8 +26,6 @@ export default function CapsuleSynergyAnalysis({ aggregatedData, darkMode = fals
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [selectedCharacters, setSelectedCharacters] = useState([]);
-  const [characterSearchTerm, setCharacterSearchTerm] = useState('');
-  const [showCharacterDropdown, setShowCharacterDropdown] = useState(false);
 
   // Extract unique characters from aggregated data
   const availableCharacters = useMemo(() => {
@@ -38,33 +37,9 @@ export default function CapsuleSynergyAnalysis({ aggregatedData, darkMode = fals
     return Array.from(uniqueChars).sort();
   }, [aggregatedData]);
 
-  // Filter characters based on search term
-  const filteredCharacters = useMemo(() => {
-    if (!characterSearchTerm) return availableCharacters;
-    const searchLower = characterSearchTerm.toLowerCase();
-    return availableCharacters.filter(char => 
-      char.toLowerCase().includes(searchLower)
-    );
-  }, [availableCharacters, characterSearchTerm]);
-
-  // Toggle character selection
+  // Toggle character selection (used by chip removal)
   const toggleCharacter = (character) => {
-    setSelectedCharacters(prev => 
-      prev.includes(character)
-        ? prev.filter(c => c !== character)
-        : [...prev, character]
-    );
-  };
-
-  // Select all filtered characters
-  const selectAllFiltered = () => {
-    const newSelections = [...new Set([...selectedCharacters, ...filteredCharacters])];
-    setSelectedCharacters(newSelections);
-  };
-
-  // Deselect all filtered characters
-  const deselectAllFiltered = () => {
-    setSelectedCharacters(prev => prev.filter(c => !filteredCharacters.includes(c)));
+    setSelectedCharacters(prev => prev.filter(c => c !== character));
   };
 
   // Load and process capsule data
@@ -176,28 +151,19 @@ export default function CapsuleSynergyAnalysis({ aggregatedData, darkMode = fals
             </div>
           </div>
 
-          {/* Search Input */}
-          <div className="relative mb-2">
-            <input
-              type="text"
-              placeholder="Search characters..."
-              value={characterSearchTerm}
-              onChange={(e) => setCharacterSearchTerm(e.target.value)}
-              onFocus={() => setShowCharacterDropdown(true)}
-              className={`w-full px-3 py-2 pl-9 rounded border transition-colors ${
-                darkMode 
-                  ? 'bg-gray-700 border-gray-600 text-gray-200 placeholder-gray-400 focus:border-blue-500' 
-                  : 'bg-white border-gray-300 text-gray-900 placeholder-gray-500 focus:border-blue-500'
-              }`}
-            />
-            <svg className={`absolute left-3 top-2.5 w-4 h-4 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-            </svg>
-          </div>
+          {/* Multi-Select Combobox */}
+          <MultiSelectCombobox
+            items={availableCharacters.map(char => ({ id: char, name: char }))}
+            selectedIds={selectedCharacters}
+            placeholder="Search and select characters..."
+            onAdd={(id) => setSelectedCharacters(prev => [...prev, id])}
+            darkMode={darkMode}
+            focusColor="blue"
+          />
 
           {/* Selected Characters Pills - Scrollable */}
           {selectedCharacters.length > 0 && (
-            <div className={`max-h-24 overflow-y-auto mb-3 p-2 rounded border ${
+            <div className={`mt-3 max-h-24 overflow-y-auto p-2 rounded border ${
               darkMode ? 'border-gray-600 bg-gray-700/50' : 'border-gray-300 bg-gray-50'
             }`}>
               <div className="flex flex-wrap gap-2">
@@ -221,94 +187,6 @@ export default function CapsuleSynergyAnalysis({ aggregatedData, darkMode = fals
                 ))}
               </div>
             </div>
-          )}
-
-          {/* Character Dropdown */}
-          {showCharacterDropdown && (
-            <div className={`relative border rounded-lg ${darkMode ? 'border-gray-600 bg-gray-700' : 'border-gray-300 bg-white'}`}>
-              {/* Quick Actions */}
-              <div className={`flex gap-2 p-2 border-b ${darkMode ? 'border-gray-600' : 'border-gray-200'}`}>
-                <button
-                  onClick={selectAllFiltered}
-                  className={`flex-1 px-3 py-1 text-xs rounded transition-colors ${
-                    darkMode
-                      ? 'bg-gray-600 text-gray-200 hover:bg-gray-500'
-                      : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
-                  }`}
-                >
-                  Select All {filteredCharacters.length < availableCharacters.length ? `(${filteredCharacters.length})` : ''}
-                </button>
-                <button
-                  onClick={deselectAllFiltered}
-                  className={`flex-1 px-3 py-1 text-xs rounded transition-colors ${
-                    darkMode
-                      ? 'bg-gray-600 text-gray-200 hover:bg-gray-500'
-                      : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
-                  }`}
-                >
-                  Deselect All {filteredCharacters.length < availableCharacters.length ? `(${filteredCharacters.length})` : ''}
-                </button>
-                <button
-                  onClick={() => setShowCharacterDropdown(false)}
-                  className={`px-3 py-1 text-xs rounded transition-colors ${
-                    darkMode
-                      ? 'bg-gray-600 text-gray-200 hover:bg-gray-500'
-                      : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
-                  }`}
-                >
-                  Done
-                </button>
-              </div>
-
-              {/* Character List - More Compact */}
-              <div className="max-h-48 overflow-y-auto p-2">
-                {filteredCharacters.length > 0 ? (
-                  <div className="space-y-0.5">
-                    {filteredCharacters.map(char => (
-                      <label
-                        key={char}
-                        className={`flex items-center gap-2 px-2 py-1 rounded cursor-pointer transition-colors ${
-                          darkMode
-                            ? 'hover:bg-gray-600'
-                            : 'hover:bg-gray-100'
-                        }`}
-                      >
-                        <input
-                          type="checkbox"
-                          checked={selectedCharacters.includes(char)}
-                          onChange={() => toggleCharacter(char)}
-                          className="w-4 h-4 rounded"
-                        />
-                        <span className={`text-sm ${darkMode ? 'text-gray-200' : 'text-gray-900'}`}>
-                          {char}
-                        </span>
-                      </label>
-                    ))}
-                  </div>
-                ) : (
-                  <p className={`text-center py-4 text-sm ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
-                    No characters found matching "{characterSearchTerm}"
-                  </p>
-                )}
-              </div>
-            </div>
-          )}
-
-          {/* Show/Hide Dropdown Button (when closed) */}
-          {!showCharacterDropdown && (
-            <button
-              onClick={() => setShowCharacterDropdown(true)}
-              className={`w-full px-3 py-2 text-sm rounded border transition-colors ${
-                darkMode
-                  ? 'bg-gray-700 border-gray-600 text-gray-300 hover:bg-gray-600'
-                  : 'bg-white border-gray-300 text-gray-700 hover:bg-gray-50'
-              }`}
-            >
-              {selectedCharacters.length > 0 
-                ? `Click to modify selection (${selectedCharacters.length} selected)`
-                : 'Click to select characters'
-              }
-            </button>
           )}
         </div>
       )}

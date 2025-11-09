@@ -147,9 +147,9 @@ function recalculateCharacterStatsForTeam(character, teamMatches, teamName) {
   const avgDefensiveCaps = Math.round((totalDefensiveCaps / Math.max(denom, 1)) * 10) / 10;
   const avgUtilityCaps = Math.round((totalUtilityCaps / Math.max(denom, 1)) * 10) / 10;
   
-  // Calculate derived stats
+  // Calculate derived stats - use total-based efficiency (aggregate then calculate)
   const dps = Math.round((avgDamage / Math.max(avgBattleTime, 0.1)) * 10) / 10;
-  const efficiency = Math.round((avgDamage / Math.max(avgTaken, 1)) * 100) / 100;
+  const efficiency = totalTaken > 0 ? Math.round((totalDamage / totalTaken) * 100) / 100 : 0;
   const healthRetention = avgHPGaugeValueMax > 0 ? (avgHealth / avgHPGaugeValueMax) * 100 : 0;
   const winRate = matchCount > 0 ? (wins / matchCount) * 100 : 0;
   const speedImpactWinRate = totalSpeedImpacts > 0 ? Math.round((totalSpeedImpactWins / totalSpeedImpacts) * 1000) / 10 : 0;
